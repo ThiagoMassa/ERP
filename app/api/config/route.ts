@@ -1,0 +1,2 @@
+const env=process.env;
+export async function GET(){const e=env as any;let google=false;try{if(e.SUPABASE_URL&&e.SUPABASE_PUBLISHABLE_KEY){const r=await fetch(e.SUPABASE_URL+'/auth/v1/settings',{headers:{apikey:e.SUPABASE_PUBLISHABLE_KEY},signal:AbortSignal.timeout(5000)});if(r.ok){const d:any=await r.json();google=d.external?.google===true}}}catch{}return Response.json({url:e.SUPABASE_URL||'',key:e.SUPABASE_PUBLISHABLE_KEY||'',email:!!(e.RESEND_API_KEY&&e.RESEND_FROM),marketplace:!!e.SERPAPI_KEY,google},{headers:{'Cache-Control':'no-store'}})}

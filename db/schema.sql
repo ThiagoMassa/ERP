@@ -1,0 +1,14 @@
+create table public.businesses (owner_id uuid primary key references auth.users(id) on delete cascade, niche text not null check(niche in ('Impressão 3D','Mecânica','Pneus','Cozinha','Hospedagem')),created_at timestamptz not null default now());
+create table public.products (id uuid primary key default gen_random_uuid(),owner_id uuid not null references auth.users(id) on delete cascade,name text not null check(length(trim(name)) between 1 and 160),category text not null,cost numeric(14,2) not null check(cost>=0),price numeric(14,2) not null check(price>=0),stock integer not null default 0 check(stock>=0),created_at timestamptz not null default now(),unique(id,owner_id));
+create table public.entries (id uuid primary key default gen_random_uuid(),owner_id uuid not null references auth.users(id) on delete cascade,description text not null check(length(trim(description)) between 1 and 240),type text not null check(type in ('income','expense')),amount numeric(14,2) not null check(amount>0),date date not null,category text not null,status text not null check(status in ('paid','pending')),product_id uuid,quantity integer check(quantity>0),created_at timestamptz not null default now(),foreign key(product_id,owner_id) references public.products(id,owner_id),check((product_id is null and quantity is null) or (product_id is not null and quantity is not null and type='income')));
+create index products_owner on public.products(owner_id);
+create index entries_owner_date on public.entries(owner_id,date);
+create index entries_product_owner on public.entries(product_id,owner_id);
+alter table public.businesses enable row level security;
+alter table public.products enable row level security;
+alter table public.entries enable row level security;
+create policy owner_only on public.businesses for all to authenticated using((select auth.uid())=owner_id) with check((select auth.uid())=owner_id);
+create policy owner_only on public.products for all to authenticated using((select auth.uid())=owner_id) with check((select auth.uid())=owner_id);
+create policy owner_only on public.entries for all to authenticated using((select auth.uid())=owner_id) with check((select auth.uid())=owner_id);
+revoke all on public.businesses,public.products,public.entries from anon;
+grant select,insert,update,delete on public.businesses,public.products,public.entries to authenticated;
