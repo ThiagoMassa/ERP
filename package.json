@@ -7,7 +7,7 @@
   },
   "scripts": {
     "install:ci": "node scripts/install-ci.mjs",
-    "dev": "node scripts/prepare-3d.mjs && node --env-file-if-exists=.dev.vars node_modules/next/dist/bin/next dev --webpack -p 5173",
+    "dev": "node scripts/prepare-3d.mjs && node scripts/local.mjs dev",
     "build": "node scripts/prepare-3d.mjs && next build --webpack",
     "start": "next start -H 0.0.0.0",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
@@ -73,3 +73,4 @@
     }
   }
 }
+

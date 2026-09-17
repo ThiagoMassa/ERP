@@ -1,0 +1,15 @@
+"use client";
+import {useEffect,useId,useState} from 'react';
+import type {SupabaseClient} from '@supabase/supabase-js';
+import {readERP,rows,str,type Row} from '@/lib/operations';
+
+export type FieldSpec={key:string;label:string;type?:string;required?:boolean;step?:string;min?:number;max?:number;hint?:string;options?:[string,string][];value?:string|number;minLength?:number;disabled?:boolean};
+export function Fields({fields,row={}}:{fields:FieldSpec[];row?:Row}) {return <div className="op-form-grid">{fields.map(f=><label className={'op-field '+(f.type==='textarea'?'span-two':'')} key={f.key}><span>{f.label}{f.required&&<i aria-hidden="true"> *</i>}</span>{f.options?<select name={f.key} required={f.required} defaultValue={str(row[f.key]??f.value??f.options[0]?.[0])} disabled={f.disabled}>{f.options.map(([v,l])=><option key={v} value={v}>{l}</option>)}</select>:f.type==='textarea'?<textarea required={f.required} disabled={f.disabled} minLength={f.minLength} name={f.key} rows={3} maxLength={2000} defaultValue={str(row[f.key]??f.value)}/>:<input name={f.key} type={f.type||'text'} required={f.required} step={f.step} min={f.min} max={f.max} disabled={f.disabled} minLength={f.minLength} maxLength={f.type==='number'?undefined:240} defaultValue={str(row[f.key]??f.value)}/>} {f.hint&&<small>{f.hint}</small>}</label>)}</div>}
+export function values(form: HTMLFormElement): Row {return Object.fromEntries(new FormData(form).entries());}
+export function EntityPicker({db,business,currency,source,label,value,onChange,filter,initial=[],required=true}:{db:SupabaseClient;business:string;currency:string;source:'products'|'partners';label:string;value:string;onChange:(id:string,row?:Row)=>void;filter?:(row:Row)=>boolean;initial?:Row[];required?:boolean}) {
+ const [query,setQuery]=useState(''),[options,setOptions]=useState<Row[]>(initial),[error,setError]=useState('');const id=useId();
+ useEffect(()=>{let active=true;const timer=setTimeout(()=>{readERP(db,business,'lookups',{query,currency}).then(d=>{if(active){setOptions(rows((d as Row)[source]));setError('')}}).catch(()=>active&&setError('Não foi possível buscar. Tente novamente.'))},250);return()=>{active=false;clearTimeout(timer)}},[db,business,currency,query,source]);
+ const visible=filter?options.filter(filter):options;const selected=initial.find(r=>str(r.id)===value);
+ return <div className="op-field"><label htmlFor={id}>{label}</label><input id={id} placeholder="Digite para buscar…" value={query} onChange={e=>setQuery(e.target.value)}/><select aria-label={'Selecionar '+label} value={value} onChange={e=>onChange(e.target.value,options.find(o=>str(o.id)===e.target.value))} required={required}><option value="">Selecione um resultado</option>{selected&&!visible.some(r=>r.id===selected.id)&&<option value={str(selected.id)}>{str(selected.name)}</option>}{visible.map(r=><option key={str(r.id)} value={str(r.id)}>{str(r.name)}{r.sku?' · '+str(r.sku):''}</option>)}</select><small>{error||'Até 100 resultados. Refine a busca pelo nome ou código.'}</small></div>
+}
+
