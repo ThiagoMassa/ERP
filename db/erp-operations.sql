@@ -292,8 +292,8 @@ begin
    select id into user_target from auth.users where lower(email)=lower(trim(d->>'email'));
    if user_target is null then raise exception 'A pessoa precisa criar uma conta antes de ser adicionada'; end if;
    if user_target=owner then raise exception 'O proprietário mantém acesso administrativo'; end if;
-   insert into public.erp_members(business_id,user_id,role,active) values(b,user_target,d->>'role',coalesce((d->>'active')::boolean,true))
-   on conflict(business_id,user_id) do update set role=excluded.role,active=excluded.active; ident:=user_target;
+   insert into erp_control.memberships(company_id,user_id,role,active) values(b,user_target,d->>'role',coalesce((d->>'active')::boolean,true))
+   on conflict(company_id,user_id) do update set role=excluded.role,active=excluded.active,version=erp_control.memberships.version+1; ident:=user_target;
  elsif a='partner.save' then
    if exists(select 1 from public.erp_partners where id=ident and business_id<>b) then raise exception 'Parceiro indisponível'; end if;
    insert into public.erp_partners(id,business_id,name,email,phone,document,address,customer,supplier,active)

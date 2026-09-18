@@ -2,7 +2,7 @@ import type {SupabaseClient} from '@supabase/supabase-js';
 
 export type Row = Record<string, unknown>;
 export type PageData = {rows: Row[]; count: number};
-export type Filters = {query?: string; page?: number; size?: number; currency?: string; start?: string; end?: string; status?: string; kind?: string; id?: string};
+export type Filters = {export?: boolean;query?: string; page?: number; size?: number; currency?: string; start?: string; end?: string; status?: string; kind?: string; id?: string};
 export const str = (v: unknown) => v == null ? '' : String(v);
 export const num = (v: unknown) => Number(v || 0);
 export const rows = (v: unknown): Row[] => Array.isArray(v) ? v as Row[] : [];

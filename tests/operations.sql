@@ -1,9 +1,11 @@
 -- Run after the v2 schema inside BEGIN/ROLLBACK. No fixture survives.
 do $$
 declare u uuid:=gen_random_uuid(); other_u uuid:=gen_random_uuid(); b uuid; partner uuid; prod uuid; purchase uuid; sale uuid; wid uuid; aid uuid;
- request_id uuid:=gen_random_uuid(); result jsonb; detail jsonb; fid uuid; tid uuid; payment uuid; n numeric; denied boolean; sid uuid; printer uuid; job uuid; output_id uuid;
+ request_id uuid:=gen_random_uuid(); result jsonb; detail jsonb; fid uuid; tid uuid; payment uuid; n numeric; denied boolean; sid uuid; printer uuid; job uuid; output_id uuid; op_session uuid:=gen_random_uuid(); other_session uuid:=gen_random_uuid();
 begin
  insert into auth.users(id,email) values(u,'erp-test-'||u||'@example.invalid'),(other_u,'erp-test-'||other_u||'@example.invalid');
+ insert into auth.sessions(id,user_id,created_at,aal) values(op_session,u,now(),'aal1'),(other_session,other_u,now(),'aal1');
+ perform set_config('request.jwt.claims',jsonb_build_object('sub',u,'session_id',op_session,'exp',floor(extract(epoch from now()+interval '1 hour')),'iat',floor(extract(epoch from now())),'aal','aal1')::text,true);
  perform set_config('request.jwt.claim.sub',u::text,true);
  result:=public.erp_command(null,'business.save','{"name":"Teste transacional","model":"printing"}',gen_random_uuid()); b:=(result->>'id')::uuid;
  wid:=(public.erp_read(b,'lookups','{}')->'warehouses'->0->>'id')::uuid;
@@ -35,12 +37,14 @@ begin
  if (select stock from public.products where id=prod)<>10 then raise exception 'FAIL devolução estoque'; end if;
  denied:=false; begin perform public.erp_command(b,'stock.adjust',jsonb_build_object('product_id',prod,'warehouse_id',wid,'quantity',-11,'reason','Sem saldo'),gen_random_uuid()); exception when others then denied:=true; end;
  if not denied or (select stock from public.products where id=prod)<>10 then raise exception 'FAIL saldo negativo/rollback'; end if;
- insert into public.erp_members(business_id,user_id,role) values(b,other_u,'read');
+ insert into erp_control.memberships(company_id,user_id,role) values(b,other_u,'read');
+ perform set_config('request.jwt.claims',jsonb_build_object('sub',other_u,'session_id',other_session,'exp',floor(extract(epoch from now()+interval '1 hour')),'iat',floor(extract(epoch from now())),'aal','aal1')::text,true);
  perform set_config('request.jwt.claim.sub',other_u::text,true);
  perform public.erp_read(b,'products','{}');
  denied:=false; begin perform public.erp_command(b,'stock.adjust',jsonb_build_object('product_id',prod,'warehouse_id',wid,'quantity',1,'reason','Sem permissão'),gen_random_uuid()); exception when insufficient_privilege then denied:=true; end;
  if not denied then raise exception 'FAIL permissão leitura'; end if;
  perform set_config('request.jwt.claim.sub',u::text,true);
+ perform set_config('request.jwt.claims',jsonb_build_object('sub',u,'session_id',op_session,'exp',floor(extract(epoch from now()+interval '1 hour')),'iat',floor(extract(epoch from now())),'aal','aal1')::text,true);
  prod:=(public.erp_command(b,'product.save','{"name":"PLA","sku":"PLA","unit":"g","item_type":"material","cost":0.1,"price":0.2,"currency":"BRL","stock":1000}',gen_random_uuid())->>'id')::uuid;
  if not exists(select 1 from public.erp_stock_ledger where product_id=prod and kind='opening' and delta=1000) then raise exception 'FAIL abertura registrada'; end if;
  sid:=(public.erp_command(b,'spool.save',jsonb_build_object('name','Bobina preta','product_id',prod,'warehouse_id',wid,'remaining_g',1000),gen_random_uuid())->>'id')::uuid;

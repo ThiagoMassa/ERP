@@ -89,7 +89,7 @@ end $$;
 create function erp_control.effective(p_company uuid,p_user uuid,p_module text,p_action text) returns jsonb language plpgsql security definer set search_path='' as $$
 declare r text; matches jsonb; permitted boolean;
 begin
- if p_module not in ('overview','sales','purchases','catalog','stock','finance','production','settings') or p_action not in ('available','visible','read','create','edit','delete','approve','cancel','reverse','export') then return jsonb_build_object('allowed',false,'origin','Função desconhecida');end if;
+ if p_module is null or p_action is null or p_module not in ('overview','sales','purchases','catalog','stock','finance','production','settings') or p_action not in ('available','visible','read','create','edit','delete','approve','cancel','reverse','export') then return jsonb_build_object('allowed',false,'origin','Função desconhecida');end if;
  if not exists(select 1 from erp_control.companies where id=p_company and status='active') then return jsonb_build_object('allowed',false,'origin','Empresa suspensa ou não cadastrada');end if;
  if exists(select 1 from erp_control.user_access where user_id=p_user and status<>'active') then return jsonb_build_object('allowed',false,'origin','Conta bloqueada');end if;
  select role into r from erp_control.memberships where company_id=p_company and user_id=p_user and active;
@@ -223,5 +223,4 @@ begin
 end $$;
 revoke all on function erp_control.register_company() from public,anon,authenticated;
 create trigger register_control_company after insert on public.business_units for each row execute function erp_control.register_company();
-
 

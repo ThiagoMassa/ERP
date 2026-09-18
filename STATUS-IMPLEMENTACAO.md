@@ -1,10 +1,11 @@
-# Estado da implementação — 17/09/2026
+# Estado da implementação — 18/09/2026
 
 Esta revisão está em desenvolvimento. Não confundir a compilação local com a versão publicada na Railway.
 
 ## Aplicado no Supabase central
 
 - Migração `erp_admin_control_plane`, correspondente a `db/admin-control.sql`.
+- Correção incremental `admin_policy_input_validation`: módulos/ações nulos também são negados explicitamente.
 - Identidade do primeiro ADM global vinculada à conta confirmada indicada pelo titular, por operação administrativa de bootstrap. Não há promoção pelo navegador, e-mail informado no login ou metadados editáveis.
 - Cadastro privado de administradores, empresas, vínculos, políticas, estados de provisionamento, auditoria e registros de backup.
 - RPCs administrativas verificam sessão existente, expiração, bloqueios, autorização global e AAL2. Alterações exigem TOTP recente e justificativa; versões protegem alterações concorrentes.
@@ -17,6 +18,9 @@ Esta revisão está em desenvolvimento. Não confundir a compilação local com 
 - Nova interface operacional: navegação agrupada, descrições, períodos, estados de carregamento, formulários, tabelas paginadas, documentos comerciais, liquidações parciais e produção 3D.
 - `db/erp-operations.sql`: rotinas transacionais de pedidos, atendimento, títulos, pagamentos, estoque, bobinas e impressão. Testado com rollback; ainda não aplicado.
 - `db/admin-legacy-guards.sql`: políticas adicionais de bloqueio e permissões na API legada. Testado com rollback; ainda não aplicado.
+- `db/operations-access.sql`: integração das rotinas operacionais com vínculos e permissões centrais, negação de operações sem política, verificação por ação, retirada de acesso direto às tabelas, proteção de fotos/3MF, expurgo de dados restritos em consultas agregadas e exportação auditada. Testado com rollback; ainda não aplicado. Não é substituto do isolamento físico/lógico de bancos.
+- A interface consulta as permissões efetivas para menus, ações e exportação; recarrega ao navegar, mudar filtros/contexto ou voltar à janela. Marketplace exige empresa autorizada. Resumo por e-mail usa o financeiro transacional e exige permissão de exportação, mantendo o envio desativado sem credenciais.
+- `tests/operations-access.sql`: usuários da mesma empresa veem o mesmo registro; troca de ID da empresa é negada; vínculo inativo perde acesso; bloqueio global afeta outras empresas; módulo desativado bloqueia API, upload e cache de idempotência; UUID fornecido não contorna autorização de criação; agregados não vazam financeiro; exportação verifica permissão e registra auditoria; funções internas e tabelas não são acessíveis diretamente.
 - TypeScript, lint dos componentes alterados e build Next.js aprovados. Testes de domínio e geometria aprovados.
 - Testes SQL administrativos: AAL1 negado, MFA antigo negado, sessão revogada negada, metadados de usuário sem elevação, precedência de bloqueio, função desconhecida negada, prontidão de banco não forjável e privilégios privados fechados. Dados de teste revertidos.
 - Testes SQL operacionais: compra/venda, estoque, atendimento idempotente, pagamentos parciais/estorno, isolamento entre empresas, reserva e consumo real de bobina e produto final. Dados de teste revertidos.
@@ -24,7 +28,7 @@ Esta revisão está em desenvolvimento. Não confundir a compilação local com 
 
 ## Pendências obrigatórias antes de promover esta revisão
 
-1. Integrar o controle central com **todos** os caminhos de leitura e escrita operacionais. As funções `erp_private` da revisão operacional usam o modelo de equipe anterior e não podem ser publicadas como se já aplicassem a matriz global. Consolidar vínculos, permissões efetivas, invalidação de sessão/cache e bloqueios em um único controle.
+1. Concluir validação ponta a ponta da autorização integrada. A migração `operations-access.sql` já centraliza a autorização das RPCs e revoga acesso aos núcleos e tabelas, mas ainda não foi aplicada. Publicar `erp-operations.sql` sem essa integração reintroduziria o modelo anterior. Revalidar todas as permissões após a migração para bancos exclusivos e testar os endpoints externos com credenciais de teste antes de ativá-los.
 2. Implementar resolução de conexão por empresa no servidor e provisionar bancos lógicos distintos, com credenciais restritas e identidade verificada. O estado manual existe no painel, mas a criação/conexão/migração/checagem ainda não existe. `company_id` na base compartilhada não satisfaz esse requisito. Preservar e migrar os dados legados com contagem e reconciliação antes de qualquer troca.
 3. Implementar backup e restauração por banco, retenção, verificação, cópia anterior à restauração, bloqueio operacional e ensaio de recuperação. A tabela de estado não é um mecanismo de backup.
 4. Concluir correções administrativas de registros operacionais com empresa explícita, motivo, concorrência, identidade original preservada e auditoria antes/depois. Não existe editor genérico de SQL.

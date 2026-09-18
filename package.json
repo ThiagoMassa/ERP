@@ -12,7 +12,7 @@
     "start": "next start -H 0.0.0.0",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "db:generate": "drizzle-kit generate",
-    "test": "node --experimental-strip-types tests/domain.test.mjs && node tests/geometry.test.mjs"
+    "test": "node --experimental-strip-types tests/domain.test.mjs && node --experimental-strip-types tests/permissions.test.mjs && node tests/geometry.test.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",
