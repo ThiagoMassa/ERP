@@ -1,7 +1,10 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  outputFileTracingIncludes: {
+    '/api/erp': ['./db/tenant/*.sql'],
+    '/api/admin/database': ['./db/tenant/*.sql'],
+  },
 };
 
 export default nextConfig;

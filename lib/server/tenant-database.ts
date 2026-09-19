@@ -1,6 +1,7 @@
 import postgres, { type Sql } from 'postgres';
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import { tenantConnectionOptions, tenantIdentity, TenantConfigurationError } from './tenant-identity.ts';
 
 export type TenantHealth = {
@@ -10,13 +11,13 @@ export type TenantHealth = {
 };
 export type Migration = {version: string; sql: string; checksum: string};
 export async function kernelMigration(): Promise<Migration> {
-  const sql = await readFile(new URL('../../db/tenant/001-kernel.sql', import.meta.url), 'utf8');
+  const sql = await readFile(join(process.cwd(), 'db', 'tenant', '001-kernel.sql'), 'utf8');
   return {version: '001-kernel', sql, checksum: createHash('sha256').update(sql).digest('hex')};
 }
 export async function tenantMigrations(): Promise<Migration[]> {
   const versions = ['001-kernel','001-request-context','002-operations','003-dispatch'];
   return Promise.all(versions.map(async version => {
-    const sql = await readFile(new URL(`../../db/tenant/${version}.sql`, import.meta.url), 'utf8');
+    const sql = await readFile(join(process.cwd(), 'db', 'tenant', `${version}.sql`), 'utf8');
     return {version, sql, checksum: createHash('sha256').update(sql).digest('hex')};
   }));
 }
