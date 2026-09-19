@@ -1,4 +1,4 @@
-# Estado da implementação — 18/09/2026
+# Estado da implementação — 19/09/2026
 
 Esta revisão está em desenvolvimento. Não confundir a compilação local com a versão publicada na Railway.
 
@@ -6,6 +6,7 @@ Esta revisão está em desenvolvimento. Não confundir a compilação local com 
 
 - Migração `erp_admin_control_plane`, correspondente a `db/admin-control.sql`.
 - Correção incremental `admin_policy_input_validation`: módulos/ações nulos também são negados explicitamente.
+- Migração `tenant_request_authorization`, correspondente a `db/tenant-routing.sql`: contexto empresarial atual por sessão/vínculo/políticas, sem credenciais e com expiração de 25 segundos. Testes com rollback e consulta posterior confirmaram a instalação.
 - Identidade do primeiro ADM global vinculada à conta confirmada indicada pelo titular, por operação administrativa de bootstrap. Não há promoção pelo navegador, e-mail informado no login ou metadados editáveis.
 - Cadastro privado de administradores, empresas, vínculos, políticas, estados de provisionamento, auditoria e registros de backup.
 - RPCs administrativas verificam sessão existente, expiração, bloqueios, autorização global e AAL2. Alterações exigem TOTP recente e justificativa; versões protegem alterações concorrentes.
@@ -26,10 +27,20 @@ Esta revisão está em desenvolvimento. Não confundir a compilação local com 
 - Testes SQL operacionais: compra/venda, estoque, atendimento idempotente, pagamentos parciais/estorno, isolamento entre empresas, reserva e consumo real de bobina e produto final. Dados de teste revertidos.
 - Tela de login ADM inspecionada no navegador local. Painel autenticado e cadastro de MFA ainda não exercitados ponta a ponta com usuário real.
 
+## Bancos exclusivos — avanço em 19/09
+
+- Driver PostgreSQL instalado; criação de bancos e usuários restritos, identidade permanente e migrações com checksum implementadas. Execução pelo operador em `scripts/provision-tenant.mjs`, com credenciais somente em segredos do servidor.
+- Motor operacional portado para bancos independentes em `db/tenant/`, sem tabelas de autenticação locais. A autoria usa apenas IDs históricos.
+- `app/api/erp`: revalida sessão e políticas centrais a cada requisição, resolve a conexão pelo UUID autorizado e recusa banco sem isolamento, migrações ou conciliação. Ainda não é usado pelo cliente operacional.
+- ADM → Empresas → Verificar banco: diagnóstico real, acesso AAL2 auditado, sem senhas ou ativação pelo navegador. Código local; fluxo autenticado no navegador ainda não exercitado.
+- PostgreSQL 17.11 portátil no diretório ignorado `work/`: testes reais com duas bases, bloqueio de conexão entre empresas, repetição sem duplicação, rollback de migração, venda/estoque/pagamentos/estornos/produção 3D e dois autores compartilhando os mesmos registros. Bases de teste removidas ao final.
+- Nenhuma base operacional de produção foi criada ou ativada nesta etapa; a consulta do controle central confirmou zero empresas prontas. A conta ADM inicial segue sem fator MFA verificado.
+- Configuração e limites documentados em `TENANT-DATABASES.md`. O provisionador verifica estrutura, mas não importa nem libera dados por conta própria.
+
 ## Pendências obrigatórias antes de promover esta revisão
 
 1. Concluir validação ponta a ponta da autorização integrada. A migração `operations-access.sql` já centraliza a autorização das RPCs e revoga acesso aos núcleos e tabelas, mas ainda não foi aplicada. Publicar `erp-operations.sql` sem essa integração reintroduziria o modelo anterior. Revalidar todas as permissões após a migração para bancos exclusivos e testar os endpoints externos com credenciais de teste antes de ativá-los.
-2. Implementar resolução de conexão por empresa no servidor e provisionar bancos lógicos distintos, com credenciais restritas e identidade verificada. O estado manual existe no painel, mas a criação/conexão/migração/checagem ainda não existe. `company_id` na base compartilhada não satisfaz esse requisito. Preservar e migrar os dados legados com contagem e reconciliação antes de qualquer troca.
+2. Concluir a implantação da arquitetura exclusiva: o provisionador, motor transacional, API e diagnóstico existem e passaram em PostgreSQL real, mas faltam importação/contagem/conciliação dos dados legados, registro seguro de arquivos, corte com bloqueio de escrita e ativação central auditada. Adaptar cadastros empresariais/vínculos e o cliente para a nova API. Configurar credenciais de produção e verificar CONNECT em outras bases, sem retirar privilégios internos do Supabase às cegas. Não aplicar a migração operacional compartilhada como substituto.
 3. Implementar backup e restauração por banco, retenção, verificação, cópia anterior à restauração, bloqueio operacional e ensaio de recuperação. A tabela de estado não é um mecanismo de backup.
 4. Concluir correções administrativas de registros operacionais com empresa explícita, motivo, concorrência, identidade original preservada e auditoria antes/depois. Não existe editor genérico de SQL.
 5. Concluir consulta/simulação visual de permissões efetivas, filtros por status/data, exportação auditada, convites/reenvios e detalhes de erros/provisionamento. O servidor já calcula precedência de regras, mas a UX completa ainda está pendente.
@@ -44,4 +55,3 @@ Resend, OAuth Google e SerpApi permanecem aguardando credenciais, conforme decis
 As sete tabelas de `erp_control` têm RLS sem políticas de acesso direto, intencionalmente: não há grants de tabela para usuários, e o acesso ocorre por funções privadas com autorização explícita. Não adicionar políticas permissivas para eliminar esses avisos informativos.
 
 A proteção contra senhas vazadas permanece desativada no projeto, um aviso anterior a esta revisão. [Documentação do Supabase](https://supabase.com/docs/guides/auth/password-security#password-strength-and-leaked-password-protection).
-
