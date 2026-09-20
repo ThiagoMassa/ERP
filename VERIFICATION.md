@@ -12,6 +12,8 @@
 - Backup: pg_dump/pg_restore nativos, AES-256-GCM, manifesto autenticado, prazo de retenção, repetição pelo ID, recuperação integral em banco temporário e comparação das tabelas/funções aprovados. A outra empresa permaneceu intacta. Chave incorreta, troca de empresa, manifesto/arquivo adulterados e excesso de tamanho foram recusados; arquivos parciais e banco temporário foram removidos.
 - Supabase central, dentro de BEGIN/ROLLBACK: controle administrativo, políticas, roteamento de contexto, corte legado e matriz de permissões aprovados. A matriz foi verificada novamente depois de instalada. Dados de teste não permanecem no banco.
 
+- Restauração em PostgreSQL real: cópia de segurança, comparação antes do commit e falha durante recriação dos esquemas com rollback integral aprovados. Contextos antigos recusados após restauração. Worker central retoma falhas antes/depois da conclusão sem repetir a sobrescrita; autoria original e outra empresa preservadas.
+
 ## Interface
 
 - Login ADM inspecionado em revisão anterior, com tema vermelho e identificação permanente.
@@ -19,16 +21,19 @@
 - Inspeção visual da matriz em desktop e largura de 390 px; rolagem horizontal da tabela preserva a coluna do módulo. Corrigida a fonte de fallback e traduzida a origem dos perfis.
 - Esse ensaio não substitui o fluxo autenticado com MFA nem confirma salvamento de regras em produção. Não houve alteração de acesso por essa prévia.
 
+- Tela de backups: componente real com respostas fictícias, desktop/390 px, revisão de impacto, envio bloqueado sem confirmação, solicitação exibida em andamento e filtro vazio. Sem excesso de largura na página; tabela rola horizontalmente. Isso não exercita MFA nem servidor real.
+
 ## Estado externo e limites
 
-- Aplicados no Supabase: controle administrativo, validação incremental das políticas, contexto empresarial por requisição e matriz administrativa de permissões.
+- Aplicados no Supabase: controle administrativo, validação incremental das políticas, contexto empresarial por requisição e matriz administrativa de permissões e controle de manutenção/backup.
+- Controle de manutenção: teste central com rollback após instalação aprovado; usuário comum, MFA antigo, prontidão falsa, confirmação incorreta, concorrência e execução privada pelo cliente recusados. Consulta posterior: zero jobs e backups.
 - db/tenant-cutover.sql foi testado com rollback, mas **não aplicado**. O importador/worker e o novo cliente não foram liberados em produção.
 - Última consulta: zero empresas prontas e zero fatores MFA verificados na conta ADM inicial.
-- Nenhum backup ou restauração **de produção** realizado. Núcleo e ensaio local existem; integração ao painel, retenção automática e restauração sobre empresa existente ainda pendentes. Nenhum banco empresarial de produção criado/ativado.
+- Nenhum backup ou restauração **de produção** realizado. Integração controle/API/painel/operador e restauração sobre banco existente passaram nos testes locais; ainda faltam agendamento, retenção automática, arquivos externos e configuração/execução de produção. Nenhum banco empresarial de produção criado/ativado.
 - Frontend operacional ainda usa a RPC compartilhada; adaptar à API de bancos exclusivos é obrigatório antes da publicação desta revisão.
 - Fotos/3MF dependem de migração/registro de arquivos; o importador recusa referências de foto não verificadas. Origem com operações v2 exige migrador próprio.
 - Testes 3D estruturais não substituem abertura real no Bambu Studio. O modelo A2 segue manual/não verificado.
 - Resend, Google OAuth e SerpApi continuam sem credenciais por decisão do titular.
-- Advisor: sete avisos informativos de RLS sem políticas nas tabelas privadas, intencionalmente fechadas, e aviso preexistente de proteção contra senhas vazadas desativada.
+- Advisor: oito avisos informativos de RLS sem políticas nas tabelas privadas, intencionalmente fechadas, e aviso preexistente de proteção contra senhas vazadas desativada.
 
 O PR permanece em desenvolvimento. A versão pública da Railway não equivale ao código local desta revisão. Consulte STATUS-IMPLEMENTACAO.md para as pendências completas.

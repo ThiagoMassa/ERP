@@ -61,7 +61,7 @@ try {
   await inspect`insert into public.erp_warehouses(business_id,name) values(${fixtureIds[0]},'Principal')`;
   await inspect`update tenant.identity set operational_state='active'`;
   const permissions=Object.fromEntries(['overview','sales','purchases','catalog','stock','finance','production','settings'].map(m=>[m,Object.fromEntries(['available','visible','read','create','edit','delete','approve','cancel','reverse','export'].map(v=>[v,{allowed:true,origin:'Teste de contexto autorizado pelo servidor'}]))]));
-  function context(user=actor){return {actor:user,company:fixtureIds[0],expires_at:new Date(Date.now()+25000).toISOString(),permissions};}
+  function context(user=actor){return {actor:user,company:fixtureIds[0],epoch:'00000000-0000-0000-0000-000000000000',expires_at:new Date(Date.now()+25000).toISOString(),permissions};}
   async function dispatch(mode,operation,data={},ctx=context(),key=randomUUID()) {return (await a`select tenant.dispatch(${a.json(ctx)},${mode},${operation},${a.json(data)},${key}) as result`)[0].result;}
   const product=(await dispatch('command','product.save',{name:'Peça impressa',item_type:'finished',unit:'un',currency:'BRL',cost:10,price:25,stock:5})).id;
   assert.equal((await dispatch('read','products',{},context(colleague))).rows[0].id,product);

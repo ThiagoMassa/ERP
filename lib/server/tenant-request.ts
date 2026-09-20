@@ -30,7 +30,7 @@ export async function executeTenantRequest(authorization: string, request: Tenan
   const sql=postgres(tenantConnectionOptions(connection,request.company,options));
   try {
     // Whitelist the context returned by the central DB. Never forward a client context.
-    const trusted={actor:context.actor,company:context.company,expires_at:context.expires_at,permissions:context.permissions};
+    const trusted={actor:context.actor,company:context.company,expires_at:context.expires_at,permissions:context.permissions,epoch:context.access_epoch};
     const result=await sql`select tenant.dispatch(${sql.json(trusted)},${request.mode},${request.operation},${sql.json(request.data as postgres.JSONValue)},${request.key||null}) as data`;
     return result[0].data;
   } catch(error) {

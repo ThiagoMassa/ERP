@@ -31,6 +31,7 @@ try {
  create function auth.uid() returns uuid language sql stable as $$select (auth.jwt()->>'sub')::uuid$$;`);
  await control.unsafe(await file('db/admin-control.sql'));
  await control.unsafe(await file('db/tenant-routing.sql'));
+ await control.unsafe(await file('db/tenant-backup-control.sql'));
  await control.unsafe(await file('db/tenant-cutover.sql'));
  const owner=randomUUID(),session=randomUUID(),factor=randomUUID(),productA=randomUUID(),productB=randomUUID();
  await control`insert into auth.users(id,email) values(${owner},'operator@example.invalid')`;
@@ -64,7 +65,7 @@ try {
  const route=(await control`select public.erp_tenant_context(${ids[1]}) as data`)[0].data;
  assert.equal(route.provisioning,'ready');assert.equal(route.database_identity,fixtures[1].database);
  const runtime=postgres(tenantConnectionOptions(runtimeUrl(1),ids[1],{allowLocalTest:true}));opened.push(runtime);
- const products=(await runtime`select tenant.dispatch(${runtime.json(route)},'read','products','{}',null) as data`)[0].data;
+ const products=(await runtime`select tenant.dispatch(${runtime.json({...route,epoch:route.access_epoch})},'read','products','{}',null) as data`)[0].data;
  assert.equal(products.rows.length,1);assert.equal(products.rows[0].id,productA);
  assert.equal((await control`select data_location from erp_control.companies where id=${ids[2]}`)[0].data_location,'legacy');
  assert.equal((await b`select count(*)::int as n from public.products`)[0].n,0);

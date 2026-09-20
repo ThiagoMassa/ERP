@@ -62,7 +62,7 @@ try {
  assert.equal((await target`select count(*)::int as n from tenant.audit`)[0].n,1);
  // The copy is reconciled, but runtime dispatch remains locked until explicit activation.
  const runtime=postgres(tenantConnectionOptions(`postgres://${fixtures[1].runtime}:${secrets[1]}@127.0.0.1:55439/${fixtures[1].database}`,company,{allowLocalTest:true}));opened.push(runtime);
- await assert.rejects(runtime`select tenant.dispatch('{}','read','products','{}',null)`,e=>e.code==='55000');
+ await assert.rejects(runtime`select tenant.dispatch('{"epoch":"00000000-0000-0000-0000-000000000000"}','read','products','{}',null)`,e=>e.code==='55000');
  await assert.rejects(runtime`select tenant.dispatch_core('{}','read','products','{}',null)`,e=>e.code==='42501');
  await source`update erp_control.companies set data_location='legacy' where id=${company}`;
  await source`update public.products set name='Origem alterada indevidamente' where id=${product}`;

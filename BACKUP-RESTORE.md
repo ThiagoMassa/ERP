@@ -1,48 +1,75 @@
-# Backup e recuperação por empresa — integração em andamento
+# Backup e recuperação por empresa
 
-## Implementação atual
+## Estado atual
 
-`lib/server/tenant-backup.ts` é um módulo exclusivo do operador de infraestrutura. Não é importado por rotas web. O painel ainda não dispara suas funções nem apresenta seus resultados; a tabela central de backups não está ligada a ele.
+O controle central `db/tenant-backup-control.sql` está aplicado no Supabase. A interface, API, operador e restauração estão implementados nesta revisão local/PR; ainda não publicados na Railway. Não existem backups de produção nem bancos empresariais de produção liberados.
 
-- `createTenantBackup`: valida banco, proprietário, identidade e migrações; exporta um snapshot PostgreSQL e usa esse mesmo snapshot para os registros de conferência e para o `pg_dump` em formato custom. O dump é criptografado durante o streaming com AES-256-GCM, sem arquivo SQL em claro no disco.
-- `inspectBackup`: verifica empresa, ID, chave, assinatura HMAC do manifesto, tamanho e SHA-256 do arquivo criptografado. Não aceita substituição do manifesto para trocar empresa ou retenção.
-- `verifyTenantRecovery`: cria um banco temporário privado, executa `pg_restore` real e compara contagens, SHA-256 de todos os registros das tabelas e definições das funções. O manifesto só recebe `verified_at` após a comparação. O banco temporário é removido ao concluir, inclusive em falhas.
+O painel **Bancos e backups** exige empresa selecionada e sessão ADM com MFA. Mostra cópias, tamanho, datas, retenção, verificação e solicitações, com filtros e paginação. Para solicitar backup ou restauração, exige justificativa e confirmação recente da identidade. A restauração apresenta o impacto e exige confirmação explícita da empresa e do backup.
 
-Uma repetição de criação com o mesmo ID de solicitação reutiliza apenas um artefato completo e autenticado. Ela não sobrescreve o backup anterior nem renova sua data de retenção. Uma pasta incompleta não é adotada automaticamente.
+Uma solicitação não é um backup concluído. O painel registra uma fila autorizada; a execução ocorre em processo privado com ferramentas PostgreSQL. Não há execução nativa nem credenciais de manutenção nas rotas web. A autorização do solicitante é revalidada durante a execução e expira após dez minutos; o solicitante pode renová-la no painel com MFA recente.
 
-O banco temporário nasce sem conexões permitidas; o acesso público é revogado antes de habilitar a conexão do operador. A credencial operacional da empresa não recebe acesso a ele. Nome, proprietário e ausência de dados são conferidos antes da recuperação. As bases operacionais existentes não são modificadas nesse ensaio.
+## Garantias do mecanismo
 
-## Configuração necessária para o operador
+- `createTenantBackup`: valida banco, proprietário, identidade e migrações. Usa um snapshot PostgreSQL comum ao inventário e ao `pg_dump` custom. Criptografa o stream com AES-256-GCM, sem gravar SQL em claro. O manifesto é autenticado por HMAC e contém contagens, hashes, versão da chave e retenção.
+- `verifyTenantRecovery`: cria um banco temporário privado, executa `pg_restore` real e compara tabelas, contagens, conteúdo e rotinas. Só depois registra a verificação. Remove o banco temporário ao concluir, inclusive em falhas.
+- `restoreTenantBackup`: verifica o backup selecionado, bloqueia o despacho operacional e aguarda transações em andamento. Cria e verifica uma cópia do estado atual, com retenção de 30 dias. A substituição dos esquemas e a comparação dos dados ocorrem em uma única transação, usando `psql` e `pg_restore`. Falhas antes do commit preservam os dados anteriores. A empresa permanece em manutenção até a liberação pelo controle central.
+- `runTenantMaintenance`: revalida autorização, registra a cópia de segurança, acompanha etapas e auditoria e confere o banco usando sua credencial restrita antes de liberar. O marcador de restauração e a chave da solicitação permitem retomar uma resposta perdida sem restaurar novamente. O bloqueio por solicitação impede dois operadores simultâneos.
+- A restauração muda a geração de autorização (`access_epoch`): contextos de requisições anteriores são recusados pelo banco. Autorizações e usuários permanecem no controle central, fora da cópia empresarial.
 
-1. Executáveis oficiais `pg_dump` e `pg_restore`, em caminhos absolutos, compatíveis com a versão do servidor. Não instalar utilitários de origem desconhecida.
-2. Conexão de manutenção PostgreSQL com acesso ao banco empresarial, criação de banco temporário e capacidade de assumir seu proprietário. Nunca colocar essa conexão no navegador ou no serviço web.
-3. TLS com validação completa para conexões remotas; opcionalmente, caminho do certificado raiz confiável. O desvio de TLS existe somente para testes explicitamente configurados em loopback literal.
-4. Diretório privado absoluto e persistente, fora da pasta pública da aplicação. Configure ACLs apropriadas no Windows ou permissões do usuário do operador no Linux. Copie os artefatos criptografados para armazenamento independente do servidor; um disco efêmero não é destino de proteção adequado.
-5. Chave de 32 bytes em gerenciador de segredos e identificador de versão/rotação. Preserve as chaves antigas enquanto houver backups que dependam delas. Não coloque a chave junto aos arquivos de backup, em parâmetros de comandos, no Git ou nos logs.
-6. Retenção desejada entre 1 e 3650 dias e limite de tamanho adequado. O limite padrão é 2 GiB de arquivo criptografado; ultrapassá-lo cancela a criação e remove o arquivo parcial.
+A autoria original dos registros é preservada. O evento de restauração identifica o ADM real, a justificativa, o backup selecionado, a cópia de segurança e a correlação central. Uma restauração não modifica outra empresa.
 
-O módulo recebe essas configurações de um chamador privado. Não há CLI liberada para uso em produção antes de integrar a autorização administrativa e a auditoria das solicitações.
+## Instalação e configuração do operador
 
-## Artefatos
+Aplique o controle central depois de `admin-control.sql` e `tenant-routing.sql`. Os bancos empresariais precisam do pacote atual de migrações até `005-access-epoch`; atualize o roteador em conjunto. O corte e a conciliação devem estar concluídos antes de o banco ser marcado como pronto. Não altere esse estado manualmente para habilitar botões.
 
-Cada ID tem sua pasta privada com `archive.enc` e `manifest.json`. O manifesto contém identidade, datas, versão da chave, contagens e hashes, sem senhas, tokens ou conteúdo dos registros. Ele é autenticado; alterações invalidam a conferência. O prazo de retenção está registrado, mas **não há exclusão automática implementada**.
+Execute `scripts/run-maintenance.mjs` em um ambiente privado separado do serviço web. Configure os seguintes valores pelo gerenciador de segredos, sem incluí-los em argumentos do processo, Git ou logs:
 
-Esquemas adicionais ou objetos binários PostgreSQL fora do modelo atual são recusados para não produzir uma cópia incompleta. Fotos e arquivos 3MF estão no Storage e não entram no dump PostgreSQL; a proteção de seus bytes/manifestos precisa ser integrada separadamente.
+| Variável | Uso |
+| --- | --- |
+| `ERP_CONTROL_OPERATOR_URL` | Conexão PostgreSQL privada ao controle central, autorizada para as etapas de manutenção. |
+| `ERP_CONTROL_CA` | Certificado CA em PEM para a conexão central, quando necessário. |
+| `ERP_PROVISIONER_URL` | Conexão privada ao cluster empresarial com capacidade de criar bancos temporários e assumir os proprietários empresariais. |
+| `ERP_TENANT_<UUID_SEM_HIFENS_EM_MAIUSCULAS>_URL` | Credencial operacional restrita da empresa, usada para conferir isolamento e saúde. |
+| `ERP_PG_ROOT_CERT` | Caminho absoluto de certificado raiz confiável, quando necessário. Usado pelo driver e pelas ferramentas nativas. |
+| `ERP_PG_DUMP`, `ERP_PG_RESTORE`, `ERP_PSQL` | Caminhos absolutos para os executáveis oficiais compatíveis com o servidor. |
+| `ERP_BACKUP_DIRECTORY` | Diretório absoluto privado e persistente, fora da pasta pública da aplicação. |
+| `ERP_BACKUP_KEY_ID` | Identificador da chave atual (letras, números, `_` ou `-`, até 64 caracteres). |
+| `ERP_BACKUP_KEYS` | Objeto JSON privado que associa cada identificador a uma chave de 32 bytes em hexadecimal (64 caracteres). |
 
-## Teste local reproduzível
+As URLs PostgreSQL devem conter banco, usuário e senha, sem parâmetros adicionais. TLS é obrigatório na CLI, com validação de certificado. O desvio de TLS existe somente nas funções de teste explícitas em loopback, não no comando de produção.
 
-O teste aceita somente o cluster descartável `127.0.0.1:55439`, usuário `erp_test_admin`, com senha lida de `work/pg-test-password`, e usa os executáveis oficiais em `work/postgresql/pgsql/bin`. Não aceita URL de produção. Cria e remove somente seus bancos, credenciais e arquivos temporários.
+Preserve as chaves antigas durante a retenção dos artefatos e durante solicitações pendentes. Não rotacione a chave atual no meio de uma solicitação incompleta. Configure ACLs no Windows ou permissões restritas no Linux. Mantenha cópia dos arquivos criptografados em armazenamento independente; um disco efêmero não é proteção adequada.
 
-```powershell
+## Procedimento
+
+1. No painel ADM, selecione a empresa. Confirme identidade com MFA, informe a justificativa e solicite o backup. Para restaurar, escolha um backup verificado dentro da retenção, revise o impacto e marque a confirmação.
+2. Copie o UUID da solicitação e execute no ambiente privado:
+
+   ```text
+   node --experimental-strip-types scripts/run-maintenance.mjs <UUID-da-solicitacao>
+   ```
+
+3. Atualize o painel. `Solicitado` indica que o operador ainda não concluiu o trabalho; `Verificado` exige recuperação real bem-sucedida. Durante restauração, acompanhe a cópia de segurança, a conferência e a liberação.
+4. Em falha, mantenha a empresa suspensa. Corrija a causa, renove a autorização da mesma solicitação com MFA e execute novamente o mesmo UUID. Não crie outro job nem libere o banco manualmente. Se houver perda de resposta após o commit, a repetição consulta o marcador e conclui as etapas restantes.
+
+O limite padrão é 2 GiB de arquivo criptografado. Uma pasta incompleta não é adotada nem sobrescrita automaticamente. Backups usados para restauração devem corresponder ao pacote de migrações instalado; não há conversão automática entre versões de esquema.
+
+## Limites ainda pendentes
+
+- Agendamento de backups e ensaios periódicos de recuperação.
+- Exclusão auditada por retenção e proteção dos artefatos usados por solicitações em andamento. O prazo já é registrado e verificado; não há exclusão automática.
+- Cópia/restauração de fotos e arquivos 3MF no Storage. O dump protege o banco, não esses bytes externos; a interface informa essa limitação.
+- Configuração da infraestrutura privada de produção, execução pelo operador e teste autenticado pelo painel com MFA real. O primeiro ADM precisa matricular seu segundo fator.
+
+## Verificação reproduzível
+
+Os testes nativos aceitam somente o cluster local descartável `127.0.0.1:55439`, usuário `erp_test_admin`, com senha em `work/pg-test-password`. Usam executáveis oficiais em `work/postgresql/pgsql/bin` e removem apenas seus bancos e arquivos temporários.
+
+```text
 node --experimental-strip-types tests/tenant-backup.test.mjs
+node --experimental-strip-types tests/tenant-maintenance.test.mjs
 ```
 
-O teste cria dados em duas empresas, faz backup da primeira, muda seus dados atuais e recupera a cópia em banco temporário. Compara integralmente os registros e funções restaurados e confirma que ambas as empresas originais continuam com seus dados atuais. Também testa ID repetido, chave incorreta, backup de outra empresa, corrupção de bytes/manifesto e limpeza depois de exceder o limite de tamanho.
+Cobrem corrupção de arquivo/manifesto, chave errada, empresa errada, recuperação integral, cópia anterior, falha após DROP SCHEMA com rollback, revogação de autorização, resposta perdida antes/depois da conclusão, repetição sem sobrescrita, epoch antiga recusada, autoria e segunda empresa preservadas. `tests/tenant-backup-control.sql` testa as regras centrais dentro de BEGIN/ROLLBACK, sem produzir artefatos reais. A prévia visual usa respostas fictícias e não comprova autenticação ou execução em produção.
 
-## Antes de restaurar sobre uma empresa existente
-
-Esse procedimento **ainda não está implementado**. A integração deve exigir seleção de empresa e backup, confirmação do impacto, justificativa e MFA recente; validar o artefato, criar uma cópia de segurança do estado atual, suspender as operações, restaurar transacionalmente, verificar os dados e registrar a ação no controle central antes de liberar o acesso.
-
-Também faltam acompanhamento pelo painel, execução periódica dos ensaios, tratamento auditado de retenção, proteção de cópias usadas por restaurações em andamento e migração dos arquivos externos. A função de ensaio isolado não deve ser apresentada como restauração concluída sobre a empresa.
-
-As ferramentas seguem os formatos e garantias descritos na documentação oficial de [pg_dump](https://www.postgresql.org/docs/17/app-pgdump.html) e [pg_restore](https://www.postgresql.org/docs/17/app-pgrestore.html).
+Referências dos utilitários: [pg_dump](https://www.postgresql.org/docs/17/app-pgdump.html), [pg_restore](https://www.postgresql.org/docs/17/app-pgrestore.html) e [psql](https://www.postgresql.org/docs/17/app-psql.html).

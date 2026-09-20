@@ -12,7 +12,7 @@ import {tenantIdentity,TenantConfigurationError} from './tenant-identity.ts';
 import {tenantMigrations} from './tenant-database.ts';
 
 const hashSchema=z.string().regex(/^[a-f0-9]{64}$/);
-const tableSchema=z.object({schema:z.enum(['public','tenant','erp_private']),name:z.string(),rows:z.number().int().nonnegative(),digest:hashSchema}).strict();
+const tableSchema=z.object({schema:z.enum(['public','tenant','erp_private']),name:z.string(),rows:z.number().int().nonnegative(),digest:hashSchema,chain_digest:hashSchema.optional()}).strict();
 const manifestSchema=z.object({version:z.literal(1),id:z.string().uuid(),company:z.string().uuid(),database:z.string(),created_at:z.string().datetime(),retention_until:z.string().datetime(),verified_at:z.string().datetime().nullable(),key_id:z.string().regex(/^[a-zA-Z0-9_-]{1,64}$/),iv:z.string().regex(/^[a-f0-9]{24}$/),tag:z.string().regex(/^[a-f0-9]{32}$/),bytes:z.number().int().positive(),sha256:hashSchema,tables:z.array(tableSchema).min(1),schema_digest:hashSchema,mac:hashSchema}).strict();
 export type BackupManifest=z.infer<typeof manifestSchema>;
 export type BackupKey={id:string;value:Buffer};
@@ -22,8 +22,10 @@ type Store={directory:string;key:BackupKey};
 type Snapshot={tables:BackupManifest['tables'];schema_digest:string};
 type BackupOptions=Store&{company:string;id?:string;source:Sql;connection:PgConnection;tools:PgTools;retentionDays:number;maxBytes?:number};
 type RecoveryOptions=Store&{company:string;backup:string;maintenance:Sql;connectMaintenanceDatabase:(database:string)=>Sql;connection:PgConnection;tools:PgTools};
+type RestoreOptions=RecoveryOptions&{target:Sql;psql:string;job:{id:string;actor:string;reason:string;safety:string;epoch:string;confirmCompany:string;confirmBackup:string};authorize:()=>Promise<void>;onSafetyVerified?:(manifest:BackupManifest)=>Promise<void>;safetyKey?:BackupKey};
 const fail=(code:string,message:string)=>new TenantConfigurationError(code,message);
 const quote=(value:string)=>'"'+value.replaceAll('"','""')+'"';
+const literal=(value:string)=>"'"+value.replaceAll("'","''")+"'";
 function canonical(value:unknown):string{
  if(Array.isArray(value))return '['+value.map(canonical).join(',')+']';
  if(value!==null&&typeof value==='object')return '{'+Object.entries(value).sort(([a],[b])=>a<b?-1:a>b?1:0).map(([k,v])=>JSON.stringify(k)+':'+canonical(v)).join(',')+'}';
@@ -51,7 +53,7 @@ function toolEnvironment(connection:PgConnection,database:string){
   PGSSLMODE:local?'disable':'verify-full',...(connection.sslRootCert?{PGSSLROOTCERT:connection.sslRootCert}:{}),
   PGCONNECT_TIMEOUT:'10',PGAPPNAME:'fluxo-backup-operator',PGCLIENTENCODING:'UTF8',PGOPTIONS:'-c statement_timeout=0 -c lock_timeout=15000'};
 }
-function nativeTool(binary:string,kind:'pg_dump'|'pg_restore',args:string[],environment:NodeJS.ProcessEnv){
+function nativeTool(binary:string,kind:'pg_dump'|'pg_restore'|'psql',args:string[],environment:NodeJS.ProcessEnv){
  if(!isAbsolute(binary)||![kind,kind+'.exe'].includes(basename(binary)))throw fail('BACKUP_TOOL','Configure os executáveis oficiais do PostgreSQL por caminho absoluto.');
  const child=spawn(binary,args,{env:environment,windowsHide:true,shell:false,stdio:['pipe','pipe','pipe']});
  // Native diagnostics can contain user records/SQL. Never forward them to logs or API responses.
@@ -65,11 +67,11 @@ async function fingerprint(sql:TransactionSql):Promise<Snapshot>{
  const list=await sql<{schema:'public'|'tenant'|'erp_private';name:string}[]>`select schemaname as schema,tablename as name from pg_tables where schemaname in ('public','tenant','erp_private') order by schemaname collate "C",tablename collate "C"`;
  const tables:BackupManifest['tables']=[];
  for(const table of list){
-  const digest=createHash('sha256');let count=0;
+  const digest=createHash('sha256');let chain:Buffer=createHash('sha256').digest(),count=0;
   for await(const batch of sql`select to_jsonb(t)::text as value from ${sql(table.schema+'.'+table.name)} t order by (to_jsonb(t)::text) collate "C"`.cursor(200)){
-   for(const row of batch){digest.update(row.value).update('\n');count++;}
+   for(const row of batch){digest.update(row.value).update('\n');chain=createHash('sha256').update(chain).update(row.value).update('\n').digest();count++;}
   }
-  tables.push({...table,rows:count,digest:digest.digest('hex')});
+  tables.push({...table,rows:count,digest:digest.digest('hex'),chain_digest:chain.toString('hex')});
  }
  const definitions=await sql<{definition:string}[]>`select pg_get_functiondef(p.oid) as definition from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname in ('public','tenant','erp_private') and p.prokind in ('f','p') order by (p.oid::regprocedure::text) collate "C"`;
  const digest=createHash('sha256');for(const fn of definitions)digest.update(fn.definition).update('\n');
@@ -159,12 +161,105 @@ export async function verifyTenantRecovery(options:RecoveryOptions):Promise<Back
   try{await Promise.all([restore.done,pipeline(createReadStream(paths.archive),decipher,restore.child.stdin)]);}
   finally{if(restore.child.exitCode===null)restore.child.kill();}
   const restored=await target.begin('isolation level repeatable read read only',fingerprint);
-  if(canonical(restored.tables)!==canonical(manifest.tables)||restored.schema_digest!==manifest.schema_digest)throw fail('BACKUP_RECONCILIATION','A recuperação diverge dos registros ou rotinas da cópia original.');
+  const comparable=restored.tables.map((table,index)=>manifest.tables[index]?.chain_digest?table:(({chain_digest:ignored,...rest})=>{void ignored;return rest;})(table));
+  if(canonical(comparable)!==canonical(manifest.tables)||restored.schema_digest!==manifest.schema_digest)throw fail('BACKUP_RECONCILIATION','A recuperação diverge dos registros ou rotinas da cópia original.');
   const {mac:ignored,...body}=manifest;void ignored;
-  return await saveManifest(paths.manifest,{...body,verified_at:new Date().toISOString()},options.key);
+  return await saveManifest(paths.manifest,{...body,tables:restored.tables,verified_at:new Date().toISOString()},options.key);
  }finally{
   await target?.end({timeout:2});
   // The generated name is never accepted from the caller, and DROP runs only after this call created it.
   if(created)await options.maintenance.unsafe(`drop database ${quote(recoveryDatabase)} with (force)`);
  }
+}
+
+/** Authorized operator only. Leaves the tenant in maintenance until the control plane releases it. */
+export async function restoreTenantBackup(options:RestoreOptions){
+ const identity=tenantIdentity(options.company),job=options.job;
+ if(![job.id,job.actor,job.safety,job.epoch].every(id=>z.string().uuid().safeParse(id).success)||job.safety===options.backup||job.confirmCompany!==identity.company||job.confirmBackup!==options.backup||job.reason.trim().length<10||job.reason.length>1000)throw fail('RESTORE_CONFIRMATION','Confirme a empresa, o backup e uma justificativa válida.');
+ await options.authorize();
+ // Recover and verify before touching the live database, including older manifests.
+ const manifest=await verifyTenantRecovery(options);
+ const lockPool=options.connectMaintenanceDatabase(identity.database),lock=await lockPool.reserve();
+ try{
+  if((await lock`select current_database() as name`)[0].name!==identity.database)throw fail('IDENTITY_MISMATCH','Conexão de bloqueio divergente da empresa.');
+  await lock`select pg_advisory_lock(hashtextextended(${identity.database+'/restore'},0))`;
+  await options.target.begin(async sql=>{await validateSource(sql,identity.company);});
+  const prior=await options.target`select after_data from tenant.audit where action='tenant.restore' and entity=${job.id}`;
+  if(prior.length){
+   if(prior.length!==1||prior[0].after_data.backup!==options.backup||prior[0].after_data.safety!==job.safety||prior[0].after_data.epoch!==job.epoch)throw fail('RESTORE_CONFLICT','Esta solicitação já registra outra restauração.');
+   return {company:identity.company,backup:options.backup,safety:job.safety,repeated:true};
+  }
+  await options.authorize();
+  // Exclusive identity lock drains all dispatch transactions before taking the safety copy.
+  await options.target.begin(async sql=>{
+   const marker=await sql`select operational_state from tenant.identity where singleton for update`;
+   if(!['active','maintenance'].includes(marker[0]?.operational_state))throw fail('RESTORE_STATE','Banco não está ativo nem em manutenção autorizada.');
+   await sql`update tenant.identity set operational_state='maintenance' where singleton`;
+  });
+  const safetyKey=options.safetyKey??options.key;
+  await createTenantBackup({...options,key:safetyKey,id:job.safety,source:options.target,retentionDays:30});
+  const safety=await verifyTenantRecovery({...options,key:safetyKey,backup:job.safety});
+  await options.onSafetyVerified?.(safety);
+  await options.authorize();
+  // Recheck the authenticated archive immediately before opening the restoring transaction.
+  await inspectBackup(options);
+  const paths=await location(options.directory,options.backup);
+  const environment=toolEnvironment(options.connection,identity.database);
+  const psql=nativeTool(options.psql,'psql',['--no-password','--no-psqlrc','--quiet','--single-transaction','--set=ON_ERROR_STOP=1','--file=-'],environment);
+  psql.child.stdout.resume();void psql.done.catch(()=>{});
+  const dump=nativeTool(options.tools.restore,'pg_restore',['--no-owner','--no-privileges','--file=-'],environment);
+  const decipher=createDecipheriv('aes-256-gcm',options.key.value,Buffer.from(manifest.iv,'hex'));decipher.setAAD(authenticatedData(manifest));decipher.setAuthTag(Buffer.from(manifest.tag,'hex'));
+  const prelude=`set local timezone='UTC';
+do $guard$ begin
+ if current_database()<>${literal(identity.database)} or not exists(select 1 from tenant.identity where singleton and company_id=${literal(identity.company)}::uuid and database_name=current_database() and runtime_role=${literal(identity.runtime)} and operational_state='maintenance') then raise exception 'Restore target mismatch';end if;
+ perform 1 from tenant.identity where singleton for update;
+end $guard$;
+set local role ${quote(identity.owner)};
+drop schema public,tenant,erp_private cascade;
+`;
+  psql.child.stdin.write(prelude);
+  try{
+   // Keep psql stdin OPEN: it cannot commit before decryption, pg_restore and assertions succeed.
+   await Promise.all([dump.done,pipeline(createReadStream(paths.archive),decipher,dump.child.stdin),pipeline(dump.child.stdout,psql.child.stdin,{end:false})]);
+   psql.child.stdin.end(restoreAssertions(manifest,identity,job));
+   await psql.done;
+  }finally{
+   if(dump.child.exitCode===null)dump.child.kill();if(psql.child.exitCode===null)psql.child.kill();
+   await Promise.allSettled([dump.done,psql.done]);
+  }
+  const marker=await options.target`select after_data from tenant.audit where action='tenant.restore' and entity=${job.id}`;
+  if(marker.length!==1||marker[0].after_data.backup!==options.backup)throw fail('RESTORE_VERIFICATION','Restauração sem marcador de confirmação. A empresa permanece em manutenção.');
+  return {company:identity.company,backup:options.backup,safety:job.safety,repeated:false};
+ }finally{
+  try{await lock`select pg_advisory_unlock(hashtextextended(${identity.database+'/restore'},0))`;}finally{lock.release();await lockPool.end({timeout:2});}
+ }
+}
+
+function restoreAssertions(manifest:BackupManifest,identity:ReturnType<typeof tenantIdentity>,job:RestoreOptions['job']){
+ if(manifest.tables.some(table=>!table.chain_digest))throw fail('BACKUP_RECONCILIATION','Refaça a verificação deste backup antes de restaurar.');
+ return `
+set local timezone='UTC';set local search_path='';
+do $verify$ declare t jsonb;r record;n bigint;h bytea;functions_hash text;begin
+ if current_database()<>${literal(identity.database)} or not exists(select 1 from tenant.identity where singleton and company_id=${literal(identity.company)}::uuid and database_name=current_database() and runtime_role=${literal(identity.runtime)}) then raise exception 'Restored identity mismatch';end if;
+ if (select count(*) from pg_tables where schemaname in ('public','tenant','erp_private'))<>${manifest.tables.length} then raise exception 'Restored table set mismatch';end if;
+ for t in select * from jsonb_array_elements(${literal(JSON.stringify(manifest.tables))}::jsonb) loop
+  n:=0;h:=sha256(''::bytea);
+  for r in execute format('select to_jsonb(t)::text as value from %I.%I t order by (to_jsonb(t)::text) collate "C"',t->>'schema',t->>'name') loop
+   h:=sha256(h||convert_to(r.value,'UTF8')||decode('0a','hex'));n:=n+1;
+  end loop;
+  if n<>(t->>'rows')::bigint or encode(h,'hex')<>t->>'chain_digest' then raise exception 'Restored records mismatch';end if;
+ end loop;
+ select encode(sha256(convert_to(coalesce(string_agg(pg_get_functiondef(p.oid),E'\n' order by (p.oid::regprocedure::text) collate "C"),'')||case when count(*)>0 then E'\n' else '' end,'UTF8')),'hex') into functions_hash from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname in ('public','tenant','erp_private') and p.prokind in ('f','p');
+ if functions_hash<>${literal(manifest.schema_digest)} then raise exception 'Restored functions mismatch';end if;
+end $verify$;
+revoke all on schema public,tenant,erp_private from public;
+revoke all on all tables in schema public,tenant,erp_private from public,${quote(identity.runtime)};
+revoke all on all functions in schema public,tenant,erp_private from public,${quote(identity.runtime)};
+grant usage on schema tenant to ${quote(identity.runtime)};
+grant execute on function tenant.health(),tenant.dispatch(jsonb,text,text,jsonb,uuid) to ${quote(identity.runtime)};
+alter default privileges revoke execute on functions from public;
+update tenant.identity set operational_state='maintenance',access_epoch=${literal(job.epoch)}::uuid where singleton;
+insert into tenant.actors(id) values(${literal(job.actor)}::uuid) on conflict do nothing;
+insert into tenant.audit(actor_id,company_id,action,entity,after_data,result,correlation_id) values(${literal(job.actor)}::uuid,${literal(identity.company)}::uuid,'tenant.restore',${literal(job.id)},jsonb_build_object('backup',${literal(manifest.id)},'safety',${literal(job.safety)},'epoch',${literal(job.epoch)},'reason',${literal(job.reason.trim())}),'success',${literal(job.id)}::uuid);
+`;
 }

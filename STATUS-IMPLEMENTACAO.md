@@ -8,6 +8,7 @@ Esta revisão está em desenvolvimento. Não confundir a compilação local com 
 - Correção incremental `admin_policy_input_validation`: módulos/ações nulos também são negados explicitamente.
 - Migração `tenant_request_authorization`, correspondente a `db/tenant-routing.sql`: contexto empresarial atual por sessão/vínculo/políticas, sem credenciais e com expiração de 25 segundos. Testes com rollback e consulta posterior confirmaram a instalação.
 - Migração `admin_permission_matrix`, correspondente a `db/admin-permission-matrix.sql`: 80 decisões por usuário/empresa calculadas no servidor, versões das regras individuais e consulta auditada. Testes com rollback passaram antes e depois da aplicação.
+- Migração `tenant_backup_control`, correspondente a `db/tenant-backup-control.sql`: solicitações com MFA recente, idempotência, suspensão/geração de acesso, etapas privadas, listagem paginada e auditoria. Testes no Supabase com rollback aprovados; consulta posterior confirmou zero jobs, backups ou empresas prontas.
 - Identidade do primeiro ADM global vinculada à conta confirmada indicada pelo titular, por operação administrativa de bootstrap. Não há promoção pelo navegador, e-mail informado no login ou metadados editáveis.
 - Cadastro privado de administradores, empresas, vínculos, políticas, estados de provisionamento, auditoria e registros de backup.
 - RPCs administrativas verificam sessão existente, expiração, bloqueios, autorização global e AAL2. Alterações exigem TOTP recente e justificativa; versões protegem alterações concorrentes.
@@ -44,11 +45,15 @@ Esta revisão está em desenvolvimento. Não confundir a compilação local com 
 - O importador recusa origem operacional v2 já utilizada e fotos sem registro de arquivo verificado. A migração de arquivos ainda não foi implementada; essa recusa impede liberação incompleta.
 - `lib/server/tenant-backup.ts`: dump nativo por empresa com snapshot consistente, criptografia AES-256-GCM, manifesto autenticado, checksum e prazo de retenção. Repetição pelo mesmo ID reutiliza o artefato íntegro. A verificação restaura de verdade em banco temporário privado e compara tabelas, contagens, conteúdo e rotinas. Teste local com duas empresas aprovado; nenhum backup de produção realizado.
 
+- Restauração real sobre banco existente: cópia anterior verificada, substituição transacional, comparação antes do commit, bloqueio operacional, geração de contexto, autoria e auditoria. Teste de falha após DROP SCHEMA comprovou rollback integral.
+- `lib/server/tenant-maintenance.ts` e `scripts/run-maintenance.mjs`: execução privada de solicitações autorizadas, retomada sem sobrescrita e liberação após diagnóstico. Testes locais cobrem controle central real, duas empresas, MFA/revogação, confirmação, idempotência, falhas antes/depois da conclusão e rejeição de contextos antigos.
+- Tela de backups com filtro, paginação, retenção, revisão de impacto, confirmação, MFA e acompanhamento. Componente real inspecionado com dados fictícios em desktop e 390 px. Nenhuma operação de produção disparada pela prévia.
+
 ## Pendências obrigatórias antes de promover esta revisão
 
 1. Concluir validação ponta a ponta da autorização integrada. A migração `operations-access.sql` já centraliza a autorização das RPCs e revoga acesso aos núcleos e tabelas, mas ainda não foi aplicada. Publicar `erp-operations.sql` sem essa integração reintroduziria o modelo anterior. Revalidar todas as permissões após a migração para bancos exclusivos e testar os endpoints externos com credenciais de teste antes de ativá-los.
 2. Concluir a implantação da arquitetura exclusiva: provisionador, motor, API, importador legado, conciliação e worker de corte passaram em PostgreSQL real; faltam migração/registro seguro de arquivos, execução operacional acompanhada pelo painel e origem v2 quando aplicável. Adaptar cadastros empresariais/vínculos e o cliente para a nova API. Configurar credenciais de produção e verificar CONNECT em outras bases, sem retirar privilégios internos do Supabase às cegas. Não aplicar a migração operacional compartilhada como substituto.
-3. Integrar o mecanismo de backup ao controle/painel com solicitações autorizadas e auditoria. O dump criptografado e o ensaio real de recuperação estão implementados; faltam agendamento, aplicação da retenção, restauração sobre banco existente, cópia anterior, bloqueio operacional e reautenticação nesse fluxo. A tabela central de estado ainda não está ligada ao mecanismo.
+3. Concluir agendamento de backup/ensaios periódicos, aplicação auditada da retenção e inclusão dos arquivos externos. A integração controle/API/painel/operador e a restauração sobre banco existente estão implementadas e testadas localmente; faltam configuração privada, fluxo autenticado MFA no navegador e execução de produção.
 4. Concluir correções administrativas de registros operacionais com empresa explícita, motivo, concorrência, identidade original preservada e auditoria antes/depois. Não existe editor genérico de SQL.
 5. Concluir filtros por status/data, exportação auditada, convites/reenvios e acompanhamento de provisionamento. A consulta visual de permissões efetivas está implementada e testada com dados fictícios no navegador; ainda falta exercitar o salvamento pelo painel com uma sessão real MFA.
 6. Completar devoluções comerciais e efeito financeiro correspondente. `fulfillment.reverse` atualmente desfaz o atendimento e reabre entrega; não deve ser tratado como devolução financeira definitiva. Verificar limites de números finitos, paginação de lookups e auditoria operacional antes/depois.
@@ -59,6 +64,6 @@ Resend, OAuth Google e SerpApi permanecem aguardando credenciais, conforme decis
 
 ## Observações do advisor
 
-As sete tabelas de `erp_control` têm RLS sem políticas de acesso direto, intencionalmente: não há grants de tabela para usuários, e o acesso ocorre por funções privadas com autorização explícita. Não adicionar políticas permissivas para eliminar esses avisos informativos.
+As oito tabelas de `erp_control` têm RLS sem políticas de acesso direto, intencionalmente: não há grants de tabela para usuários, e o acesso ocorre por funções privadas com autorização explícita. Não adicionar políticas permissivas para eliminar esses avisos informativos.
 
 A proteção contra senhas vazadas permanece desativada no projeto, um aviso anterior a esta revisão. [Documentação do Supabase](https://supabase.com/docs/guides/auth/password-security#password-strength-and-leaked-password-protection).

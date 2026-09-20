@@ -16,7 +16,7 @@ export async function kernelMigration(): Promise<Migration> {
   return {version: '001-kernel', sql, checksum: createHash('sha256').update(sql).digest('hex')};
 }
 export async function tenantMigrations(): Promise<Migration[]> {
-  const versions = ['001-kernel','001-request-context','002-operations','003-dispatch','004-maintenance'];
+  const versions = ['001-kernel','001-request-context','002-operations','003-dispatch','004-maintenance','005-access-epoch'];
   return Promise.all(versions.map(async version => {
     const sql = await readFile(join(process.cwd(), 'db', 'tenant', `${version}.sql`), 'utf8');
     return {version, sql, checksum: createHash('sha256').update(sql).digest('hex')};
