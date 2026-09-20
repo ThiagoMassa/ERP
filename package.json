@@ -13,7 +13,7 @@
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "db:generate": "drizzle-kit generate",
     "test": "node --experimental-strip-types tests/domain.test.mjs && node --experimental-strip-types tests/permissions.test.mjs && node tests/geometry.test.mjs && node --experimental-strip-types tests/tenant-identity.test.mjs",
-    "test:tenant": "node --experimental-strip-types tests/tenant-database.test.mjs"
+    "test:tenant": "node --experimental-strip-types tests/tenant-database.test.mjs && node --experimental-strip-types tests/tenant-import.test.mjs && node --experimental-strip-types tests/tenant-cutover.test.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",

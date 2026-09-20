@@ -1,0 +1,45 @@
+-- Apply tenant-cutover.sql then run in BEGIN/ROLLBACK. No fixtures survive.
+do $$
+declare admin_id uuid:=gen_random_uuid();sid uuid:=gen_random_uuid();factor uuid:=gen_random_uuid();b uuid:=gen_random_uuid();other_b uuid:=gen_random_uuid();p uuid:=gen_random_uuid();other_p uuid:=gen_random_uuid();token jsonb;j uuid;r jsonb;denied boolean;
+begin
+ insert into auth.users(id,email) values(admin_id,'cutover-'||admin_id||'@example.invalid');
+ insert into erp_control.administrators(user_id) values(admin_id);
+ insert into auth.sessions(id,user_id,created_at,aal) values(sid,admin_id,now(),'aal1');
+ token:=jsonb_build_object('sub',admin_id,'session_id',sid,'exp',floor(extract(epoch from now()+interval '1 hour')),'iat',floor(extract(epoch from now())),'aal','aal1');
+ perform set_config('request.jwt.claims',token::text,true);
+ insert into public.business_units(id,owner_id,name,model) values(b,admin_id,'Corte A','printing'),(other_b,admin_id,'Corte B','printing');
+ insert into public.products(id,owner_id,business_id,name,category,cost,price,stock) values(p,admin_id,b,'Peça A','Geral',1,2,5),(other_p,admin_id,other_b,'Peça B','Geral',1,2,10);
+ denied:=false;begin perform public.erp_request_cutover(b,1,'Teste de corte autorizado',gen_random_uuid());exception when insufficient_privilege then denied:=true;end;
+ if not denied then raise exception 'FAIL corte sem MFA';end if;
+ insert into auth.mfa_factors(id,user_id,factor_type,status,created_at,updated_at) values(factor,admin_id,'totp','verified',now(),now());
+ update auth.sessions set aal='aal2',factor_id=factor where id=sid;
+ token:=token||jsonb_build_object('aal','aal2','amr',jsonb_build_array(jsonb_build_object('method','totp','timestamp',floor(extract(epoch from now())))));
+ perform set_config('request.jwt.claims',token::text,true);
+ j:=(public.erp_request_cutover(b,1,'Teste de corte autorizado',gen_random_uuid())->>'job_id')::uuid;
+ if (select data_location from erp_control.companies where id=b)<>'migrating' then raise exception 'FAIL congelamento';end if;
+ denied:=false;begin update public.products set price=3 where id=p;exception when object_not_in_prerequisite_state then denied:=true;end;
+ if not denied then raise exception 'FAIL escrita após congelamento';end if;
+ denied:=false;begin update public.products set business_id=other_b where id=p;exception when object_not_in_prerequisite_state then denied:=true;end;
+ if not denied then raise exception 'FAIL mover produto congelado';end if;
+ denied:=false;begin update public.business_units set name='Indevido' where id=b;exception when object_not_in_prerequisite_state then denied:=true;end;
+ if not denied then raise exception 'FAIL alterar cadastro congelado';end if;
+ update public.products set price=3 where id=other_p;
+ if erp_control.legacy_data_visible(b) or not erp_control.legacy_data_visible(other_b) then raise exception 'FAIL leitura legada durante corte';end if;
+ if has_function_privilege('authenticated','erp_control.cutover_step(uuid,text,jsonb)','execute') then raise exception 'FAIL worker exposto';end if;
+ r:=erp_control.cutover_step(j,'start');
+ denied:=false;begin perform erp_control.cutover_step(j,'activate','{"schema_version":"fake"}');exception when others then denied:=true;end;
+ if not denied then raise exception 'FAIL ativação sem conciliação';end if;
+ perform erp_control.cutover_step(j,'fail','{"code":"source password must not be logged"}');
+ if (select failure_code from erp_control.cutovers where id=j)<>'MIGRATION_FAILED' then raise exception 'FAIL sanitização';end if;
+ if (select data_location from erp_control.companies where id=b)<>'migrating' then raise exception 'FAIL falha reabre origem';end if;
+ r:=public.erp_request_cutover(b,(select version from erp_control.companies where id=b),'Repetir após falha de migração',gen_random_uuid());
+ if r->>'job_id'<>j::text then raise exception 'FAIL retry duplica solicitação';end if;
+ perform erp_control.cutover_step(j,'start');
+ perform erp_control.cutover_step(j,'verify',jsonb_build_object('source_digest',repeat('a',64),'target_digest',repeat('a',64),'counts',jsonb_build_object('products',1)));
+ perform erp_control.cutover_step(j,'activate',jsonb_build_object('source_digest',repeat('a',64),'schema_version','004-maintenance'));
+ if (select provisioning from erp_control.companies where id=b)<>'ready' or (select data_location from erp_control.companies where id=b)<>'tenant' then raise exception 'FAIL ativação';end if;
+ if erp_control.cutover_step(j,'fail')->>'status'<>'activated' then raise exception 'FAIL erro de transporte desfaz ativação';end if;
+ if (select data_location from erp_control.companies where id=other_b)<>'legacy' then raise exception 'FAIL outra empresa alterada';end if;
+ if not exists(select 1 from erp_control.audit where actor_id=admin_id and company_id=b and action='tenant.cutover.activate' and reason='Repetir após falha de migração') then raise exception 'FAIL auditoria';end if;
+ raise notice 'PASS corte central: MFA, bloqueio de escrita, outra empresa preservada, worker privado, retry, ativação conciliada, falha sem reabrir legado e auditoria';
+end $$;

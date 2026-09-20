@@ -40,7 +40,17 @@ Somente a URL restrita da empresa deve ir para os segredos do serviço web. Não
 
 O arquivo `002-operations.sql` foi derivado do núcleo transacional e dos controles de ação já revisados usando `node scripts/build-tenant-engine.mjs`. O gerador recusa dependências centrais residuais. Antes da primeira publicação é possível regenerá-lo; depois de aplicado, não altere uma migração existente: adicione migração incremental e atualize a lista do carregador. O checksum impede a alteração silenciosa de uma versão já aplicada.
 
-Para a migração real ainda faltam o importador por empresa com autoria original, a conciliação de contagens/saldos/digests, o registro autorizado de arquivos, o processo de corte com bloqueio de escrita e a ativação auditada no registro central. Também falta adaptar os cadastros empresariais/vínculos e o cliente operacional para a nova API. **Não aplique o esquema operacional compartilhado na produção como substituto dessa migração.**
+O importador legado, a conciliação e o worker de corte estão implementados e testados. Ainda faltam o registro/migração autorizada de arquivos, backup/restauração e a integração dos cadastros empresariais/vínculos e do cliente operacional à nova API. **Não aplique o esquema operacional compartilhado na produção como substituto dessa migração.**
+
+### Corte e conciliação (código em validação, sem execução em produção)
+
+`db/tenant-cutover.sql` ainda não foi aplicado no controle central. A solicitação exige ADM com MFA recente, versão atual da empresa e justificativa. Ela muda a localização para `migrating`; os gatilhos esperam gravações em andamento e passam a negar alterações em empresas/produtos/lançamentos/movimentos legados. Outra empresa continua operando. A leitura direta dos dados operacionais legados também é bloqueada durante/depois do corte.
+
+`importLegacyCompany` usa snapshot repetível na origem e uma transação no destino. Copia IDs, autores e datas sem conversão monetária para `Number`, importa somente o saldo atual como abertura e mantém movimentos anteriores como histórico. Compara contagens, saldos, títulos, pagamentos e SHA-256 dos registros. Uma falha reverte a cópia inteira; repetição verifica o estado anterior e recusa sobrescrever registros modificados.
+
+`runTenantCutover` é um worker do operador, não uma rota web. Revalida autorização administrativa a cada etapa, incluindo sessão revogada, limite de duração e MFA removido; verifica credencial restrita, identidade e checksums antes da cópia. O despacho operacional permanece bloqueado até `operational_state=active`. A ativação central exige conciliação e é auditada. Uma resposta perdida depois do commit não desfaz a ativação; uma falha anterior mantém a origem bloqueada e permite repetição com nova autorização.
+
+Limites explícitos: dados operacionais v2 já existentes na base compartilhada são recusados, pois exigem migrador próprio; produtos com fotos sem manifesto verificado também impedem a conciliação. Arquivos não são copiados por este worker. Não há botão/CLI de corte liberado nesta etapa. Não execute corte real antes de concluir arquivos, recuperação, interface e configuração de produção.
 
 ## Testes locais
 
@@ -49,9 +59,13 @@ Para a migração real ainda faltam o importador por empresa com autoria origina
 ```powershell
 node --experimental-strip-types tests/tenant-identity.test.mjs
 node --experimental-strip-types tests/tenant-database.test.mjs
+node --experimental-strip-types tests/tenant-import.test.mjs
+node --experimental-strip-types tests/tenant-cutover.test.mjs
 ```
 
 `tests/tenant-routing.sql` executa com `BEGIN/ROLLBACK` no controle central para verificar vínculo, políticas atualizadas, troca de ID e sessão revogada. O teste não substitui autenticação completa no navegador.
+
+`tests/tenant-import.test.mjs` verifica concorrência no congelamento, precisão decimal além de `Number`, datas/autores preservados, histórico sem reaplicação, arquivados sem receita e rollback. `tests/tenant-cutover.test.mjs` carrega o controle SQL real em um cluster descartável e executa o worker completo, incluindo consulta no banco ativado, revogação/MFA, falhas de transporte antes/depois do commit e isolamento da segunda empresa. As tabelas Auth desse ensaio são fixtures; assinatura JWT/login são verificados separadamente nas rotas e ainda precisam de teste autenticado no navegador.
 
 ## Backup e restauração
 

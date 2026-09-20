@@ -1,4 +1,5 @@
 import {createClient} from '@supabase/supabase-js';
+import {z} from 'zod';
 
 export const dynamic = 'force-dynamic';
 export async function POST(request: Request) {
@@ -14,6 +15,13 @@ export async function POST(request: Request) {
   const db=createClient(url,key,{global:{headers:{Authorization:authorization}},auth:{persistSession:false,autoRefreshToken:false}});
   const {data:identity,error:authError}=await db.auth.getUser(authorization.slice(7));
   if(authError||!identity.user)return reply({error:'Sessão inválida. Entre novamente.'},401);
+  if(body.mode==='read'&&body.section==='permission_matrix'){
+   const input=z.object({company:z.string().uuid(),user:z.string().uuid()}).strict().safeParse(body.filters);
+   if(!input.success)return reply({error:'Selecione uma empresa e um usuário vinculados.'},400);
+   const {data,error}=await db.rpc('erp_admin_permission_matrix',{p_company:input.data.company,p_user:input.data.user,p_correlation:crypto.randomUUID()});
+   if(error)return reply({error:error.code==='PGRST202'?'Consulta de permissões aguardando instalação.':'Consulta indisponível. Verifique a sessão administrativa e o vínculo selecionado.'},403);
+   return reply({data});
+  }
   if(body.mode!=='read'&&body.mode!=='command')return reply({error:'Operação inválida.'},400);
   const name=body.mode==='read'?'erp_admin_read':'erp_admin_command';
   const args=body.mode==='read'?{p_section:body.section,p_filters:body.filters||{}}:{p_action:body.action,p_data:body.data||{},p_correlation:crypto.randomUUID()};
@@ -23,4 +31,3 @@ export async function POST(request: Request) {
   return reply({data});
  }catch{return reply({error:'Não foi possível processar a solicitação.'},400)}
 }
-

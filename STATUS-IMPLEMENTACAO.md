@@ -1,4 +1,4 @@
-# Estado da implementação — 19/09/2026
+# Estado da implementação — 20/09/2026
 
 Esta revisão está em desenvolvimento. Não confundir a compilação local com a versão publicada na Railway.
 
@@ -7,6 +7,7 @@ Esta revisão está em desenvolvimento. Não confundir a compilação local com 
 - Migração `erp_admin_control_plane`, correspondente a `db/admin-control.sql`.
 - Correção incremental `admin_policy_input_validation`: módulos/ações nulos também são negados explicitamente.
 - Migração `tenant_request_authorization`, correspondente a `db/tenant-routing.sql`: contexto empresarial atual por sessão/vínculo/políticas, sem credenciais e com expiração de 25 segundos. Testes com rollback e consulta posterior confirmaram a instalação.
+- Migração `admin_permission_matrix`, correspondente a `db/admin-permission-matrix.sql`: 80 decisões por usuário/empresa calculadas no servidor, versões das regras individuais e consulta auditada. Testes com rollback passaram antes e depois da aplicação.
 - Identidade do primeiro ADM global vinculada à conta confirmada indicada pelo titular, por operação administrativa de bootstrap. Não há promoção pelo navegador, e-mail informado no login ou metadados editáveis.
 - Cadastro privado de administradores, empresas, vínculos, políticas, estados de provisionamento, auditoria e registros de backup.
 - RPCs administrativas verificam sessão existente, expiração, bloqueios, autorização global e AAL2. Alterações exigem TOTP recente e justificativa; versões protegem alterações concorrentes.
@@ -16,6 +17,7 @@ Esta revisão está em desenvolvimento. Não confundir a compilação local com 
 ## Código local e testes
 
 - Painel ADM com identidade visual vermelha, login separado, matrícula/verificação de MFA, dashboard real, empresas, usuários, vínculos, regras e auditoria paginadas. A troca de contexto remonta a consulta, descartando resultados anteriores.
+- Matriz interativa de permissões com busca paginada de usuários vinculados, rótulos em português, origem da decisão por célula e preparação de regras individuais com versão. A consulta não altera acesso. O salvamento continua exigindo MFA recente e justificativa.
 - Nova interface operacional: navegação agrupada, descrições, períodos, estados de carregamento, formulários, tabelas paginadas, documentos comerciais, liquidações parciais e produção 3D.
 - `db/erp-operations.sql`: rotinas transacionais de pedidos, atendimento, títulos, pagamentos, estoque, bobinas e impressão. Testado com rollback; ainda não aplicado.
 - `db/admin-legacy-guards.sql`: políticas adicionais de bloqueio e permissões na API legada. Testado com rollback; ainda não aplicado.
@@ -36,14 +38,18 @@ Esta revisão está em desenvolvimento. Não confundir a compilação local com 
 - PostgreSQL 17.11 portátil no diretório ignorado `work/`: testes reais com duas bases, bloqueio de conexão entre empresas, repetição sem duplicação, rollback de migração, venda/estoque/pagamentos/estornos/produção 3D e dois autores compartilhando os mesmos registros. Bases de teste removidas ao final.
 - Nenhuma base operacional de produção foi criada ou ativada nesta etapa; a consulta do controle central confirmou zero empresas prontas. A conta ADM inicial segue sem fator MFA verificado.
 - Configuração e limites documentados em `TENANT-DATABASES.md`. O provisionador verifica estrutura, mas não importa nem libera dados por conta própria.
+- `db/tenant-cutover.sql`: solicitação com MFA recente, justificativa e versão; bloqueio de gravações legadas que espera transações em andamento; etapas privadas de cópia/conciliação/ativação; falhas mantêm a origem bloqueada. Testado localmente e com rollback no Supabase, **ainda não aplicado**.
+- `lib/server/tenant-import.ts`: cópia por empresa com IDs/autores/datas originais, decimais exatos, contagens e SHA-256; conciliação de saldos, títulos e pagamentos; movimentos antigos não são reaplicados e receitas arquivadas não viram pagamentos. Importação é transacional e repetível sem sobrescrita.
+- `lib/server/tenant-cutover.ts` e `004-maintenance.sql`: ativação somente após estrutura e conciliação verificadas; despacho bloqueado em preparação/manutenção. O worker revê autorização, revogação e MFA durante o corte. Testes reais cobrem falhas antes/depois do commit, repetição e consulta operacional com contexto central. Não há CLI/botão de corte liberado nem uso em produção.
+- O importador recusa origem operacional v2 já utilizada e fotos sem registro de arquivo verificado. A migração de arquivos ainda não foi implementada; essa recusa impede liberação incompleta.
 
 ## Pendências obrigatórias antes de promover esta revisão
 
 1. Concluir validação ponta a ponta da autorização integrada. A migração `operations-access.sql` já centraliza a autorização das RPCs e revoga acesso aos núcleos e tabelas, mas ainda não foi aplicada. Publicar `erp-operations.sql` sem essa integração reintroduziria o modelo anterior. Revalidar todas as permissões após a migração para bancos exclusivos e testar os endpoints externos com credenciais de teste antes de ativá-los.
-2. Concluir a implantação da arquitetura exclusiva: o provisionador, motor transacional, API e diagnóstico existem e passaram em PostgreSQL real, mas faltam importação/contagem/conciliação dos dados legados, registro seguro de arquivos, corte com bloqueio de escrita e ativação central auditada. Adaptar cadastros empresariais/vínculos e o cliente para a nova API. Configurar credenciais de produção e verificar CONNECT em outras bases, sem retirar privilégios internos do Supabase às cegas. Não aplicar a migração operacional compartilhada como substituto.
+2. Concluir a implantação da arquitetura exclusiva: provisionador, motor, API, importador legado, conciliação e worker de corte passaram em PostgreSQL real; faltam migração/registro seguro de arquivos, execução operacional acompanhada pelo painel e origem v2 quando aplicável. Adaptar cadastros empresariais/vínculos e o cliente para a nova API. Configurar credenciais de produção e verificar CONNECT em outras bases, sem retirar privilégios internos do Supabase às cegas. Não aplicar a migração operacional compartilhada como substituto.
 3. Implementar backup e restauração por banco, retenção, verificação, cópia anterior à restauração, bloqueio operacional e ensaio de recuperação. A tabela de estado não é um mecanismo de backup.
 4. Concluir correções administrativas de registros operacionais com empresa explícita, motivo, concorrência, identidade original preservada e auditoria antes/depois. Não existe editor genérico de SQL.
-5. Concluir consulta/simulação visual de permissões efetivas, filtros por status/data, exportação auditada, convites/reenvios e detalhes de erros/provisionamento. O servidor já calcula precedência de regras, mas a UX completa ainda está pendente.
+5. Concluir filtros por status/data, exportação auditada, convites/reenvios e acompanhamento de provisionamento. A consulta visual de permissões efetivas está implementada e testada com dados fictícios no navegador; ainda falta exercitar o salvamento pelo painel com uma sessão real MFA.
 6. Completar devoluções comerciais e efeito financeiro correspondente. `fulfillment.reverse` atualmente desfaz o atendimento e reabre entrega; não deve ser tratado como devolução financeira definitiva. Verificar limites de números finitos, paginação de lookups e auditoria operacional antes/depois.
 7. Testar os fluxos autenticados no navegador, perfis distintos e acesso direto às APIs; testar concorrência de estoque/pagamentos e arredondamento de parcelas. Verificar responsividade de todos os módulos.
 8. Aplicar apenas as migrações compatíveis com a arquitetura final, atualizar a documentação de implantação e publicar/validar na Railway. A existência de um branch ou PR não significa implantação.

@@ -15,7 +15,7 @@ for(const bad of [url+'?sslmode=disable',url+'#fragment',url.replace(identity.ru
 assert.equal(tenantConnectionOptions(url.replace(identity.runtime,identity.runtime+'.abcdefghijklmnopqrst'),id).username,identity.runtime+'.abcdefghijklmnopqrst');
 assert.throws(()=>assertTenantReady({identity_matches:true,engine_installed:false,reconciled:false,migrations:[]},[]));
 assert.throws(()=>assertTenantReady({identity_matches:true,engine_installed:true,reconciled:true,migrations:[{version:'001-kernel',checksum:'wrong'}]},[{version:'001-kernel',checksum:'right'}]));
-const health={identity_matches:true,runtime_restricted:true,engine_installed:true,reconciled:true,migrations:[{version:'001-kernel',checksum:'right'}]};
+const health={identity_matches:true,runtime_restricted:true,engine_installed:true,reconciled:true,operational_state:'active',migrations:[{version:'001-kernel',checksum:'right'}]};
 assert.doesNotThrow(()=>assertTenantReady(health,[{version:'001-kernel',checksum:'right'}]));
 assert.throws(()=>assertTenantReady({...health,runtime_restricted:false},[{version:'001-kernel',checksum:'right'}]));
 assert.throws(()=>assertTenantReady({...health,migrations:[...health.migrations,{version:'newer-than-app',checksum:'unknown'}]},[{version:'001-kernel',checksum:'right'}]));

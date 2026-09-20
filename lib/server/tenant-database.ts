@@ -8,6 +8,7 @@ export type TenantHealth = {
   company_id: string; database: string; runtime_role: string; session_role: string;
   identity_matches: boolean; runtime_restricted: boolean; migrations: {version: string; checksum: string}[];
   reconciled: boolean; engine_installed: boolean;
+  operational_state?: 'preparing'|'active'|'maintenance';
 };
 export type Migration = {version: string; sql: string; checksum: string};
 export async function kernelMigration(): Promise<Migration> {
@@ -15,7 +16,7 @@ export async function kernelMigration(): Promise<Migration> {
   return {version: '001-kernel', sql, checksum: createHash('sha256').update(sql).digest('hex')};
 }
 export async function tenantMigrations(): Promise<Migration[]> {
-  const versions = ['001-kernel','001-request-context','002-operations','003-dispatch'];
+  const versions = ['001-kernel','001-request-context','002-operations','003-dispatch','004-maintenance'];
   return Promise.all(versions.map(async version => {
     const sql = await readFile(join(process.cwd(), 'db', 'tenant', `${version}.sql`), 'utf8');
     return {version, sql, checksum: createHash('sha256').update(sql).digest('hex')};
@@ -41,11 +42,15 @@ export async function inspectTenant(connection: string, companyId: string, optio
   } finally { await sql.end({timeout: 2}); }
 }
 
-export function assertTenantReady(health: TenantHealth, required: Migration[]) {
-  if (!health.identity_matches || !health.runtime_restricted || !health.engine_installed || !health.reconciled || !required.length || health.migrations.length !== required.length ||
+export function assertTenantStructure(health: TenantHealth, required: Migration[]) {
+  if (!health.identity_matches || !health.runtime_restricted || !health.engine_installed || !required.length || health.migrations.length !== required.length ||
       required.some(m => !health.migrations.some(a => a.version === m.version && a.checksum === m.checksum))) {
-    throw new TenantConfigurationError('MIGRATION_PENDING', 'Banco ainda não liberado: confira migrações, motor operacional e conciliação dos dados.');
+    throw new TenantConfigurationError('MIGRATION_PENDING', 'Banco ainda não liberado: confira identidade, isolamento e migrações.');
   }
+}
+export function assertTenantReady(health: TenantHealth, required: Migration[]) {
+  assertTenantStructure(health,required);
+  if (!health.reconciled || health.operational_state!=='active')throw new TenantConfigurationError('MIGRATION_PENDING', 'Banco ainda não liberado: confira conciliação e ativação dos dados.');
 }
 
 type ProvisionOptions = {

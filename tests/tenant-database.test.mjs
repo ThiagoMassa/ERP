@@ -59,6 +59,7 @@ try {
   await inspect`insert into tenant.actors(id) values(${actor}),(${colleague})`;
   await inspect`insert into public.business_units(id,owner_id,name,model) values(${fixtureIds[0]},${actor},'Empresa A','printing')`;
   await inspect`insert into public.erp_warehouses(business_id,name) values(${fixtureIds[0]},'Principal')`;
+  await inspect`update tenant.identity set operational_state='active'`;
   const permissions=Object.fromEntries(['overview','sales','purchases','catalog','stock','finance','production','settings'].map(m=>[m,Object.fromEntries(['available','visible','read','create','edit','delete','approve','cancel','reverse','export'].map(v=>[v,{allowed:true,origin:'Teste de contexto autorizado pelo servidor'}]))]));
   function context(user=actor){return {actor:user,company:fixtureIds[0],expires_at:new Date(Date.now()+25000).toISOString(),permissions};}
   async function dispatch(mode,operation,data={},ctx=context(),key=randomUUID()) {return (await a`select tenant.dispatch(${a.json(ctx)},${mode},${operation},${a.json(data)},${key}) as result`)[0].result;}

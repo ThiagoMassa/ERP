@@ -32,9 +32,9 @@ export async function POST(request:Request) {
    const health=await inspectTenant(connection,expected.company,{ca:process.env.ERP_TENANT_CA});
    const migrations=await tenantMigrations();
    const schemaMatches=health.migrations.length===migrations.length&&migrations.every(m=>health.migrations.some(x=>x.version===m.version&&x.checksum===m.checksum));
-   const checks=[{label:'Conexão e identidade da empresa',ok:health.identity_matches},{label:'Credencial restrita ao banco exclusivo',ok:health.runtime_restricted},{label:'Migrações verificadas',ok:schemaMatches},{label:'Rotinas operacionais instaladas',ok:health.engine_installed},{label:'Dados conciliados',ok:health.reconciled}];
+   const checks=[{label:'Conexão e identidade da empresa',ok:health.identity_matches},{label:'Credencial restrita ao banco exclusivo',ok:health.runtime_restricted},{label:'Migrações verificadas',ok:schemaMatches},{label:'Rotinas operacionais instaladas',ok:health.engine_installed},{label:'Dados conciliados',ok:health.reconciled},{label:'Operação liberada no banco',ok:health.operational_state==='active'},{label:'Ativação registrada no controle central',ok:record.provisioning==='ready'}];
    const validated=checks.every(c=>c.ok);
-   return reply({...details,stage:validated?'validated':'preparation',checks,message:validated?'As verificações passaram. A liberação operacional depende do processo de migração e ativação auditada.':'Conclua as etapas pendentes antes da liberação. Esta verificação não altera o banco nem ativa a empresa.'});
+   return reply({...details,stage:validated?'validated':'preparation',checks,message:validated?'Banco exclusivo conciliado e ativado. As verificações de conexão e estrutura passaram.':'Conclua as etapas pendentes antes da liberação. Esta verificação não altera o banco nem ativa a empresa.'});
   } catch(error) {
    return reply({...details,stage:'failed',checks:[{label:'Conexão, identidade e isolamento',ok:false}],message:error instanceof TenantConfigurationError?error.message:'Não foi possível verificar o banco. Confira a configuração no servidor.'});
   }
