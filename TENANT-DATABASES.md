@@ -69,4 +69,6 @@ node --experimental-strip-types tests/tenant-cutover.test.mjs
 
 ## Backup e restauração
 
-Ainda não há mecanismo implementado de backup, retenção ou restauração por empresa. A tabela administrativa registra estados, mas não é um backup. Não efetuar o corte dos dados reais até implementar e testar cópia consistente, checksum, recuperação em banco isolado, cópia de segurança anterior à restauração, bloqueio de operações e reautenticação administrativa. A restauração deverá ser comprovada com duas empresas, sem alterar a segunda.
+O núcleo em `lib/server/tenant-backup.ts` cria dumps reais criptografados, verifica integridade e ensaia recuperação em banco temporário isolado. `tests/tenant-backup.test.mjs` comprovou a recuperação dos dados e rotinas, preservação da segunda empresa, recusa de adulterações e repetição por ID sem duplicar o artefato.
+
+A tabela administrativa ainda não está ligada ao mecanismo. Agendamento, aplicação da retenção e restauração sobre a empresa existente permanecem pendentes, incluindo cópia anterior, bloqueio operacional, reautenticação e auditoria central. Não efetuar corte real até concluir esse fluxo. Consulte `BACKUP-RESTORE.md` para configuração, garantias e limites atuais.
