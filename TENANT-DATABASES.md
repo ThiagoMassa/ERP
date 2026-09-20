@@ -40,7 +40,7 @@ Somente a URL restrita da empresa deve ir para os segredos do serviço web. Não
 
 O arquivo `002-operations.sql` foi derivado do núcleo transacional e dos controles de ação já revisados usando `node scripts/build-tenant-engine.mjs`. O gerador recusa dependências centrais residuais. Antes da primeira publicação é possível regenerá-lo; depois de aplicado, não altere uma migração existente: adicione migração incremental e atualize a lista do carregador. O checksum impede a alteração silenciosa de uma versão já aplicada.
 
-O importador legado, a conciliação e o worker de corte estão implementados e testados. Ainda faltam o registro/migração autorizada de arquivos, backup/restauração e a integração dos cadastros empresariais/vínculos e do cliente operacional à nova API. **Não aplique o esquema operacional compartilhado na produção como substituto dessa migração.**
+O importador legado, a conciliação e o worker de corte estão implementados e testados. O cadastro central e o cliente operacional estão integrados à nova API no branch em revisão, e o backup/restauração foi testado localmente. Ainda faltam arquivos, configuração privada e validação autenticada/implantação de produção. **Não aplique o esquema operacional compartilhado na produção como substituto dessa migração.**
 
 ### Corte e conciliação (código em validação, sem execução em produção)
 
@@ -71,4 +71,8 @@ node --experimental-strip-types tests/tenant-cutover.test.mjs
 
 O núcleo em `lib/server/tenant-backup.ts` cria dumps reais criptografados, verifica integridade e ensaia recuperação em banco temporário isolado. `tests/tenant-backup.test.mjs` comprovou a recuperação dos dados e rotinas, preservação da segunda empresa, recusa de adulterações e repetição por ID sem duplicar o artefato.
 
-A tabela administrativa ainda não está ligada ao mecanismo. Agendamento, aplicação da retenção e restauração sobre a empresa existente permanecem pendentes, incluindo cópia anterior, bloqueio operacional, reautenticação e auditoria central. Não efetuar corte real até concluir esse fluxo. Consulte `BACKUP-RESTORE.md` para configuração, garantias e limites atuais.
+A tabela administrativa está ligada ao mecanismo pelo worker privado e pelo painel de solicitações. Restauração sobre banco existente, cópia anterior, bloqueio operacional, MFA e auditoria central foram testados localmente. Agendamento, aplicação da retenção, arquivos externos e execução de produção permanecem pendentes. Não efetuar corte real até concluir esse fluxo. Consulte `BACKUP-RESTORE.md` para configuração, garantias e limites atuais.
+
+## Cadastro empresarial e equipe
+
+Consulte `COMPANY-WORKSPACE.md` para autorização, versão/idempotência, testes e ordem de implantação das RPCs centrais. O navegador não grava diretamente em `business_units` após essa migração.

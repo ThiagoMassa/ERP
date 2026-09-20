@@ -4,7 +4,7 @@ import {TenantConfigurationError} from '@/lib/server/tenant-identity';
 
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
-const schema=z.object({company:z.string().uuid(),mode:z.enum(['read','command']),operation:z.string().min(1).max(60),data:z.record(z.unknown()).default({}),key:z.string().uuid().optional()}).strict();
+const schema=z.object({company:z.string().uuid().nullable(),mode:z.enum(['read','command']),operation:z.string().min(1).max(60),data:z.record(z.unknown()).default({}),key:z.string().uuid().optional()}).strict();
 export async function POST(request:Request) {
  const reply=(value:unknown,status=200)=>Response.json(value,{status,headers:{'Cache-Control':'no-store'}});
  const authorization=request.headers.get('authorization');
@@ -14,6 +14,7 @@ export async function POST(request:Request) {
   const text=await request.text();if(text.length>110000)return reply({error:'Requisição muito grande.'},413);
   const parsed=schema.safeParse(JSON.parse(text));
   if(!parsed.success||(parsed.data.mode==='command'&&!parsed.data.key))return reply({error:'Solicitação empresarial inválida.'},400);
+  if(!parsed.data.company&&!((parsed.data.mode==='read'&&parsed.data.operation==='businesses')||(parsed.data.mode==='command'&&parsed.data.operation==='business.save')))return reply({error:'Selecione uma empresa para continuar.'},400);
   return reply({data:await executeTenantRequest(authorization,parsed.data)});
  } catch(error) {
   if(error instanceof SyntaxError)return reply({error:'Formato inválido.'},400);
