@@ -58,7 +58,7 @@ O limite padrão é 2 GiB de arquivo criptografado. Uma pasta incompleta não é
 
 - Agendamento de backups e ensaios periódicos de recuperação.
 - Exclusão auditada por retenção e proteção dos artefatos usados por solicitações em andamento. O prazo já é registrado e verificado; não há exclusão automática.
-- Cópia/restauração de fotos e arquivos 3MF no Storage. O dump protege o banco, não esses bytes externos; a interface informa essa limitação.
+- Migração das fotos antigas do Storage. Novos arquivos ficam em `tenant.assets` e entram no dump; o novo teste de recuperação com bytes precisa ser concluído. Em 21/09 o Smart App Control bloqueou `libpq.dll` nos utilitários nativos antes do dump; os testes anteriores não validam essa alteração. Consulte `TENANT-ASSETS.md`.
 - Configuração da infraestrutura privada de produção, execução pelo operador e teste autenticado pelo painel com MFA real. O primeiro ADM precisa matricular seu segundo fator.
 
 ## Verificação reproduzível

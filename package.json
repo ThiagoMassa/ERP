@@ -16,7 +16,8 @@
     "test:tenant": "node --experimental-strip-types tests/tenant-database.test.mjs && node --experimental-strip-types tests/tenant-import.test.mjs && node --experimental-strip-types tests/tenant-cutover.test.mjs",
     "test:backup": "node --experimental-strip-types tests/tenant-backup.test.mjs",
     "test:maintenance": "node --experimental-strip-types tests/tenant-maintenance.test.mjs",
-    "test:workspace": "node --experimental-strip-types tests/erp-transport.test.mjs && node --experimental-strip-types tests/company-workspace.test.mjs"
+    "test:workspace": "node --experimental-strip-types tests/erp-transport.test.mjs && node --experimental-strip-types tests/company-workspace.test.mjs",
+    "test:assets": "node --experimental-strip-types tests/asset-content.test.mjs && node --experimental-strip-types tests/asset-routes.test.mjs && node --experimental-strip-types tests/asset-transport.test.mjs && node --experimental-strip-types tests/tenant-assets.test.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",
@@ -47,7 +48,8 @@
     "tailwind-merge": "3.6.0",
     "three": "0.186.0",
     "vaul": "^1.1.2",
-    "zod": "^3.25.76"
+    "zod": "^3.25.76",
+    "saxes": "6.0.0"
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "1.37.1",

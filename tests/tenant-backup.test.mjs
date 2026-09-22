@@ -30,6 +30,11 @@ try{
   await sql`insert into public.products(id,owner_id,business_id,name,category,cost,price,stock,currency) values(${[product,otherProduct][i]},${author},${companyIds[i]},${'Peça confidencial '+i},'Peças','123.4567','987.6543',5,'CLF')`;
   await sql`update tenant.identity set operational_state='active' where singleton`;
  }
+ const assetId=randomUUID(),photoBytes=Buffer.from('Foto original no backup'),photoPath=companyIds[0]+'/'+assetId+'.png';
+ await a`insert into tenant.assets(id,bucket_id,name,filename,mime,content,created_by) values(${assetId},'product-photos',${photoPath},'foto.png','image/png',${photoBytes},${author})`;
+ await a`insert into tenant.uploads(bucket_id,name,size_bytes) values('product-photos',${photoPath},${photoBytes.length})`;
+ await a`update public.products set image_path=${photoPath} where id=${product}`;
+ const otherAsset=randomUUID();await b`insert into tenant.assets(id,bucket_id,name,filename,mime,content,created_by) values(${otherAsset},'erp-models',${companyIds[1]+'/'+otherAsset+'.3mf'},'outro.3mf','model/3mf',${Buffer.from('Arquivo exclusivo B')},${author})`;
  const options={company:companyIds[0],source:a,directory:root,key,connection,tools,retentionDays:30};
  backup=await createTenantBackup(options);
  assert.equal(backup.verified_at,null);assert.ok(backup.bytes>1000);
@@ -39,6 +44,7 @@ try{
  const encrypted=await readFile(archivePath),manifestText=await readFile(manifestPath,'utf8');
  assert.equal(encrypted.includes(Buffer.from('Peça confidencial')),false);
  assert.deepEqual(await inspectBackup({company:companyIds[0],backup:backup.id,directory:root,key}),backup);
+ assert.equal(backup.tables.find(t=>t.schema==='tenant'&&t.name==='assets').rows,1);
  // Live data changes after the snapshot must not alter the artifact or a recovery drill.
  await a`update public.products set stock=17,name='Registro posterior ao backup' where id=${product}`;
  assert.deepEqual(await createTenantBackup({...options,id:backup.id}),backup);
@@ -74,6 +80,9 @@ try{
  assert.ok((await inspectBackup({company:companyIds[0],backup:safety,directory:root,key})).verified_at);
  await a.unsafe('drop event trigger reject_restore;drop function restore_test_failure.reject();drop schema restore_test_failure;');
  const restored=await restoreTenantBackup(restoreOptions);assert.equal(restored.repeated,false);
+ assert.deepEqual((await a`select content from tenant.assets where id=${assetId}`)[0].content,photoBytes);
+ assert.equal((await a`select image_path from public.products where id=${product}`)[0].image_path,photoPath);
+ assert.equal((await b`select content from tenant.assets where id=${otherAsset}`)[0].content.toString(),'Arquivo exclusivo B');
  const restoredProduct=(await a`select stock::text as stock,price::text as price,owner_id,name from public.products where id=${product}`)[0];
  assert.deepEqual(restoredProduct,{stock:'5.000',price:'987.6543',owner_id:author,name:'Peça confidencial 0'});
  const audit=(await a`select actor_id,after_data from tenant.audit where action='tenant.restore' and entity=${job.id}`)[0];

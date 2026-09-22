@@ -76,3 +76,7 @@ A tabela administrativa está ligada ao mecanismo pelo worker privado e pelo pai
 ## Cadastro empresarial e equipe
 
 Consulte `COMPANY-WORKSPACE.md` para autorização, versão/idempotência, testes e ordem de implantação das RPCs centrais. O navegador não grava diretamente em `business_units` após essa migração.
+
+## Arquivos empresariais
+
+A migração `006-assets` adiciona conteúdo binário limitado ao banco exclusivo. A API e a interface já usam esse armazenamento no branch. O importador de fotos antigas do Storage e o ensaio de recuperação com bytes continuam pendentes. Consulte `TENANT-ASSETS.md` antes do corte.

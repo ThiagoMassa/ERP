@@ -68,7 +68,7 @@ async function fingerprint(sql:TransactionSql):Promise<Snapshot>{
  const tables:BackupManifest['tables']=[];
  for(const table of list){
   const digest=createHash('sha256');let chain:Buffer=createHash('sha256').digest(),count=0;
-  for await(const batch of sql`select to_jsonb(t)::text as value from ${sql(table.schema+'.'+table.name)} t order by (to_jsonb(t)::text) collate "C"`.cursor(200)){
+  for await(const batch of sql`select to_jsonb(t)::text as value from ${sql(table.schema+'.'+table.name)} t order by (to_jsonb(t)::text) collate "C"`.cursor(table.schema==='tenant'&&table.name==='assets'?1:200)){
    for(const row of batch){digest.update(row.value).update('\n');chain=createHash('sha256').update(chain).update(row.value).update('\n').digest();count++;}
   }
   tables.push({...table,rows:count,digest:digest.digest('hex'),chain_digest:chain.toString('hex')});

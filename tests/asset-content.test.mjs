@@ -1,0 +1,13 @@
+import assert from 'node:assert/strict';
+import {zipSync,strToU8} from 'fflate';
+import {validateAsset,readBoundedBody} from '../lib/server/asset-content.ts';
+const files={'[Content_Types].xml':strToU8('<Types/>'),'_rels/.rels':strToU8('<Relationships><Relationship Type="test/3dmodel" Target="/3D/model.model"/></Relationships>'),'3D/model.model':strToU8('<model><resources/><build/></model>')};
+assert.equal(validateAsset(zipSync(files),'erp-models','teste.3mf'),'model/3mf');
+for(const changed of [{...files,'3D/model.model':strToU8('<model>')},{...files,'3D/model.model':strToU8('<!DOCTYPE x><model/>')},{...files,'../escape.xml':strToU8('<root/>')},{...files,'_rels/.rels':strToU8('<Relationships/>')}])assert.throws(()=>validateAsset(zipSync(changed),'erp-models','teste.3mf'));
+assert.throws(()=>validateAsset(new Uint8Array(5242881),'product-photos','x.png'),/limite/);
+assert.throws(()=>validateAsset(strToU8('<svg/>'),'product-photos','x.png'),/PNG/);
+assert.throws(()=>validateAsset(zipSync(files),'erp-models','../x.3mf'),/Nome/);
+const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aS9sAAAAASUVORK5CYII=','base64');assert.equal(validateAsset(png,'product-photos','foto.png'),'image/png');
+assert.deepEqual(await readBoundedBody(new Request('http://localhost',{method:'POST',body:png}),1000),new Uint8Array(png));
+await assert.rejects(readBoundedBody(new Request('http://localhost',{method:'POST',body:png}),2),/limite/);
+console.log('PASS: bounded upload stream; real 3MF ZIP/XML validation; malformed XML, entities, traversal, missing model, oversized data and unsupported photo refused.');

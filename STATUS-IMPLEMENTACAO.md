@@ -1,4 +1,4 @@
-# Estado da implementação — 20/09/2026
+# Estado da implementação — 21/09/2026
 
 Esta revisão está em desenvolvimento. Não confundir a compilação local com a versão publicada na Railway.
 
@@ -59,6 +59,14 @@ Esta revisão está em desenvolvimento. Não confundir a compilação local com 
 - `tests/erp-transport.test.mjs` aprovado: token atualizado, empresa/chave corretos, propagação de erros e ausência de chamadas RPC legadas. A rede é simulada nesse teste; não representa login HTTP completo.
 - Componente real exercitado no navegador com três empresas fictícias e API simulada: seleção, catálogos distintos, perfil de leitura e estado pendente. Layout de preparação conferido em 390 px; dimensões/ações de desktop inspecionadas via DOM. Não substitui validação com MFA e dados reais.
 - A migração de cadastro central **não foi aplicada no Supabase**. Ela revoga CRUD direto sobre `business_units` e depende de `tenant-cutover.sql`; instalá-la com o cliente público antigo interromperia o cadastro legado. A publicação deve seguir a sequência em `COMPANY-WORKSPACE.md`.
+
+## Arquivos no banco exclusivo — avanço em 21/09
+
+- `006-assets.sql` guarda fotos/3MF e seus hashes no banco da empresa, com conteúdo imutável pela API, vínculos verificados e acesso direto negado. A API dedicada valida sessão, autorização, formato e tamanho antes da gravação; downloads verificam hash e exigem a política adequada.
+- Catálogo/formulário e arquivos 3MF agora usam `/api/erp/files`. Tentativas repetidas reutilizam chave por arquivo/empresa/usuário, e respostas de contexto antigo são descartadas. A imagem privada carregou na prévia real com dados fictícios e foi trocada sem manter a foto da empresa anterior.
+- Conteúdo, handlers HTTP, transporte e dois bancos PostgreSQL reais passaram. O motor operacional, importação sem fotos e cadastro central também passaram com a migração nova. Build, TypeScript e lint direcionado aprovados.
+- O ensaio de backup ampliado para bytes **está pendente**: `pg_dump`, `pg_restore` e `psql` foram impedidos de carregar `libpq.dll` pelo Smart App Control (evento 3077, código `0xc0e90002`). Os ensaios anteriores de restauração passaram antes desta mudança; não comprovam a versão nova com arquivos.
+- Ainda faltam copiar/reconciliar fotos antigas do Storage e bloquear a origem durante o corte. Nenhuma mudança de arquivos foi aplicada em produção. Escopo e limites em `TENANT-ASSETS.md`.
 
 ## Pendências obrigatórias antes de promover esta revisão
 
