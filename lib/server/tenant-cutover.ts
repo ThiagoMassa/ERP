@@ -2,8 +2,9 @@ import type {Sql} from 'postgres';
 import {importLegacyCompany} from './tenant-import.ts';
 import {inspectTenant,assertTenantReady,assertTenantStructure,tenantMigrations} from './tenant-database.ts';
 import {tenantIdentity,TenantConfigurationError} from './tenant-identity.ts';
+import type {LegacyPhotoBundle} from './legacy-photo-bundle.ts';
 
-type CutoverOptions={control:Sql;target:Sql;runtimeConnection:string;jobId:string;allowLocalTest?:boolean;ca?:string};
+type CutoverOptions={control:Sql;target:Sql;runtimeConnection:string;jobId:string;allowLocalTest?:boolean;ca?:string;photoBundle?:LegacyPhotoBundle};
 /** Operator worker: API handlers must never receive these maintenance connections. */
 export async function runTenantCutover(options:CutoverOptions) {
  const {control,target,jobId}=options;
@@ -14,7 +15,7 @@ export async function runTenantCutover(options:CutoverOptions) {
   // Verify the restricted credential before spending time copying records.
   const required=await tenantMigrations();
   assertTenantStructure(await inspectTenant(options.runtimeConnection,identity.company,{allowLocalTest:options.allowLocalTest,ca:options.ca}),required);
-  const report=await importLegacyCompany(control,target,jobId);
+  const report=await importLegacyCompany(control,target,jobId,options.photoBundle);
   await control`select erp_control.cutover_step(${jobId},'verify',${control.json(report)})`;
   await target.begin(async tx=>{
    const marker=await tx`select company_id,database_name from tenant.identity where singleton for update`;

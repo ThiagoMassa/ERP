@@ -1,6 +1,8 @@
 import {createHash} from 'node:crypto';
 import type {Sql,TransactionSql,JSONValue} from 'postgres';
 import {tenantIdentity,TenantConfigurationError} from './tenant-identity.ts';
+import type {LegacyPhotoBundle,LegacyPhoto} from './legacy-photo-bundle.ts';
+import {validateAsset} from './asset-content.ts';
 
 type RecordData=Record<string,JSONValue>;
 type Snapshot={company:string;business:RecordData;products:RecordData[];entries:RecordData[];movements:RecordData[]};
@@ -34,7 +36,7 @@ export function importId(namespace:string,name:string) {
 }
 
 /** Operator-only copy. It requires an MFA-authorized cutover already frozen centrally. */
-export async function importLegacyCompany(source:Sql,target:Sql,jobId:string):Promise<ImportReport> {
+export async function importLegacyCompany(source:Sql,target:Sql,jobId:string,photoBundle?:LegacyPhotoBundle):Promise<ImportReport> {
  return source.begin('isolation level repeatable read',async origin=>{
   await origin`set local timezone='UTC'`;
   const jobs=await origin<Job[]>`select id,company_id,requested_by,correlation_id,status from erp_control.cutovers where id=${jobId}`;
@@ -45,21 +47,35 @@ export async function importLegacyCompany(source:Sql,target:Sql,jobId:string):Pr
   // Refuse an incomplete port if the shared v2 engine was used before this cutover.
   const operationalTables=await origin<{name:string}[]>`select table_name as name from information_schema.columns where table_schema='public' and table_name like 'erp_%' and column_name='business_id'`;
   for(const table of operationalTables)if((await origin`select exists(select 1 from ${origin('public.'+table.name)} where business_id=${expected.company}) as used`)[0].used)throw new TenantConfigurationError('UNSUPPORTED_SOURCE','A origem já possui cadastros ou operações v2; use um migrador completo desse esquema.');
-  const data=await snapshot(origin,expected.company),sourceDigest=digest(data);
-  const counts={businesses:1,products:data.products.length,entries:data.entries.length,movements:data.movements.length};
+  const data=await snapshot(origin,expected.company);
+  const photoPaths=[...new Set(data.products.filter(p=>p.image_path!==null).map(p=>String(p.image_path)))].sort();
+  const photos=photoBundle?[...photoBundle.photos].sort((a,b)=>a.name<b.name?-1:a.name>b.name?1:0):[];
+  if((photoBundle&&photoBundle.company!==expected.company)||digest(photoPaths)!==digest(photos.map(p=>p.name)))throw new TenantConfigurationError('ASSET_BUNDLE_REQUIRED','Forneça um pacote verificado com exatamente as fotos referenciadas por esta empresa.');
+  // Preserve the digest format for previously reconciled companies without files.
+  const counts={businesses:1,products:data.products.length,entries:data.entries.length,movements:data.movements.length,...(photos.length?{photos:photos.length}:{})};
   return target.begin(async destination=>{
    await destination`set local timezone='UTC'`;
    const marker=await destination`select company_id,database_name,operational_state from tenant.identity where singleton for update`;
    if(marker.length!==1||marker[0].company_id!==expected.company||marker[0].database_name!==expected.database||(await destination`select current_database() as name`)[0].name!==expected.database)throw new TenantConfigurationError('IDENTITY_MISMATCH','O banco de destino não corresponde à empresa.');
    const previous=await destination`select id,source_digest,target_digest,counts from tenant.reconciliations`;
+   let importActor=job.requested_by;
+   if(previous.length&&photos.length){
+    const audit=await destination`select actor_id from tenant.audit where action='tenant.import' and entity=${job.id} and company_id=${expected.company}`;
+    if(audit.length!==1)throw new TenantConfigurationError('RECONCILIATION_FAILED','Auditoria original da importação ausente ou divergente.');
+    importActor=audit[0].actor_id;
+   }
+   const sourceDigest=digest(photos.length?{...data,photos:photos.map(p=>({...p,created_by:importActor}))}:data);
    if(previous.length) {
     if(previous.length!==1||previous[0].id!==job.id||previous[0].source_digest!==sourceDigest)throw new TenantConfigurationError('SOURCE_CHANGED','A origem mudou ou o destino pertence a outra migração. Não houve sobrescrita.');
-    const targetDigest=digest(await snapshot(destination,expected.company));
+    // Re-read the reviewed bundle on retry, detecting changed/missing bytes as well.
+    for(const photo of photos)await readPhoto(photoBundle!,photo);
+    const targetDigest=await targetSnapshotDigest(destination,expected.company,photos.length>0);
     if(targetDigest!==sourceDigest)throw new TenantConfigurationError('RECONCILIATION_FAILED','Os dados previamente copiados foram alterados. Não houve sobrescrita.');
     await verifyDerived(destination,expected.company);
     return {source_digest:sourceDigest,target_digest:targetDigest,counts,job_id:job.id,company:expected.company};
    }
    if(marker[0].operational_state!=='preparing')throw new TenantConfigurationError('TARGET_IN_USE','O destino não está em preparação.');
+   if((await destination`select exists(select 1 from tenant.assets) or exists(select 1 from tenant.uploads) as present`)[0].present)throw new TenantConfigurationError('TARGET_IN_USE','O destino já contém arquivos; importação recusada.');
    // Only an empty destination can receive the first legacy copy.
    const tables=await destination<{name:string}[]>`select tablename as name from pg_tables where schemaname='public' order by tablename`;
    for(const table of tables) {
@@ -68,6 +84,13 @@ export async function importLegacyCompany(source:Sql,target:Sql,jobId:string):Pr
    }
    const authors=new Set([String(data.business.owner_id),job.requested_by,...data.products.map(p=>String(p.owner_id)),...data.entries.map(e=>String(e.owner_id)),...data.movements.map(m=>String(m.owner_id))]);
    for(const author of authors)await destination`insert into tenant.actors(id) values(${author}) on conflict do nothing`;
+   // One bounded file at a time, in the same transaction as its product references.
+   // The ADM is the importer of the file; original product authors remain unchanged.
+   for(const photo of photos){
+    const bytes=await readPhoto(photoBundle!,photo);
+    await destination`insert into tenant.assets(id,bucket_id,name,filename,mime,content,created_by) values(${importId(expected.company,'legacy/photo/'+photo.name)},'product-photos',${photo.name},${photo.filename},${photo.mime},${Buffer.from(bytes)},${job.requested_by})`;
+    await destination`insert into tenant.uploads(bucket_id,name,size_bytes) values('product-photos',${photo.name},${photo.size_bytes})`;
+   }
    await destination`insert into public.business_units select * from jsonb_populate_record(null::public.business_units,${destination.json(data.business)})`;
    // Batch size bounds statement/parameter size while preserving one transaction.
    for(const [table,records] of [['products',data.products],['entries',data.entries],['stock_movements',data.movements]] as const) {
@@ -94,7 +117,7 @@ export async function importLegacyCompany(source:Sql,target:Sql,jobId:string):Pr
    await destination`insert into public.erp_payments(id,business_id,title_id,account_id,amount,date,method,actor_id,reason,created_at)
     select e.id,e.business_id,e.id,a.id,e.amount,e.date,e.payment_method,e.owner_id,'Importação legada: data e autoria preservadas.',e.created_at from public.entries e join public.erp_accounts a on a.business_id=e.business_id and a.currency=e.currency where e.status='paid' and e.deleted_at is null`;
    await verifyDerived(destination,expected.company);
-   const targetDigest=digest(await snapshot(destination,expected.company));
+   const targetDigest=await targetSnapshotDigest(destination,expected.company,photos.length>0);
    if(targetDigest!==sourceDigest)throw new TenantConfigurationError('RECONCILIATION_FAILED','A cópia difere dos registros originais. A transação foi desfeita.');
    await destination`insert into tenant.reconciliations(id,source,source_digest,target_digest,counts) values(${job.id},'legacy',${sourceDigest},${targetDigest},${destination.json(counts)})`;
    await destination`insert into tenant.audit(actor_id,company_id,action,entity,after_data,result,correlation_id) values(${job.requested_by},${expected.company},'tenant.import',${job.id},${destination.json({counts,source_digest:sourceDigest})},'success',${job.correlation_id})`;
@@ -103,12 +126,28 @@ export async function importLegacyCompany(source:Sql,target:Sql,jobId:string):Pr
  });
 }
 
+async function readPhoto(bundle:LegacyPhotoBundle,photo:LegacyPhoto){
+ try{
+  const bytes=await bundle.read(photo);
+  if(bytes.length!==photo.size_bytes||createHash('sha256').update(bytes).digest('hex')!==photo.sha256||validateAsset(bytes,'product-photos',photo.filename)!==photo.mime)throw new Error('invalid');
+  return bytes;
+ }catch{throw new TenantConfigurationError('ASSET_BUNDLE_INVALID','Foto ausente, inválida ou alterada no pacote de migração. A cópia foi desfeita.');}
+}
+
+async function targetSnapshotDigest(sql:TransactionSql,company:string,withPhotos:boolean){
+ const data=await snapshot(sql,company);
+ // Include every asset, not just referenced ones, to detect unexpected additions.
+ const rows=await sql<{data:RecordData}[]>`select jsonb_build_object('name',name,'filename',filename,'mime',mime,'size_bytes',size_bytes,'sha256',sha256,'created_by',created_by) as data from tenant.assets`;
+ const photos=rows.map(r=>r.data).sort((a,b)=>String(a.name)<String(b.name)?-1:String(a.name)>String(b.name)?1:0);
+ return digest(withPhotos||photos.length?{...data,photos}:data);
+}
+
 async function verifyDerived(sql:TransactionSql,company:string) {
  const check=await sql`select
  exists(select 1 from public.products p where business_id=${company} and p.stock<>(select coalesce(sum(quantity),0) from public.erp_balances b where b.product_id=p.id)) as stock_mismatch,
  exists(select 1 from public.products p where business_id=${company} and p.stock<>(select coalesce(sum(delta),0) from public.erp_stock_ledger l where l.product_id=p.id)) or
  (select count(*) from public.erp_stock_ledger where business_id=${company})<>(select count(*) from public.products where business_id=${company} and stock>0) as ledger_mismatch,
- exists(select 1 from public.products p where business_id=${company} and image_path is not null and not exists(select 1 from tenant.uploads u where u.bucket_id='product-photos' and u.name=p.image_path)) as file_reference_mismatch,
+ exists(select 1 from public.products p where business_id=${company} and image_path is not null and not exists(select 1 from tenant.uploads u join tenant.assets a on a.name=u.name and a.bucket_id=u.bucket_id and a.size_bytes=u.size_bytes where u.bucket_id='product-photos' and u.name=p.image_path)) as file_reference_mismatch,
  exists(select 1 from public.entries e left join public.erp_titles t on t.legacy_id=e.id where e.business_id=${company} and (t.id is null or t.amount<>e.amount or t.currency<>e.currency or t.type<>e.type or t.paid<>case when e.status='paid' and e.deleted_at is null then e.amount else 0 end or t.cancelled_at is distinct from e.deleted_at)) as title_mismatch,
  (select count(*) from public.erp_titles where business_id=${company})<>(select count(*) from public.entries where business_id=${company}) as title_count_mismatch,
  exists(select 1 from public.entries e where e.business_id=${company} and

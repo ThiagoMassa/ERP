@@ -40,7 +40,7 @@ Somente a URL restrita da empresa deve ir para os segredos do serviço web. Não
 
 O arquivo `002-operations.sql` foi derivado do núcleo transacional e dos controles de ação já revisados usando `node scripts/build-tenant-engine.mjs`. O gerador recusa dependências centrais residuais. Antes da primeira publicação é possível regenerá-lo; depois de aplicado, não altere uma migração existente: adicione migração incremental e atualize a lista do carregador. O checksum impede a alteração silenciosa de uma versão já aplicada.
 
-O importador legado, a conciliação e o worker de corte estão implementados e testados. O cadastro central e o cliente operacional estão integrados à nova API no branch em revisão, e o backup/restauração foi testado localmente. Ainda faltam arquivos, configuração privada e validação autenticada/implantação de produção. **Não aplique o esquema operacional compartilhado na produção como substituto dessa migração.**
+O importador legado, a conciliação e o worker de corte estão implementados e testados. O cadastro central e o cliente operacional estão integrados à nova API no branch em revisão, e o backup/restauração foi testado localmente. A integração dos arquivos e a importação por pacote foram acrescentadas posteriormente. Ainda faltam janela de exportação, configuração privada e validação autenticada/implantação de produção. **Não aplique o esquema operacional compartilhado na produção como substituto dessa migração.**
 
 ### Corte e conciliação (código em validação, sem execução em produção)
 
@@ -50,7 +50,19 @@ O importador legado, a conciliação e o worker de corte estão implementados e 
 
 `runTenantCutover` é um worker do operador, não uma rota web. Revalida autorização administrativa a cada etapa, incluindo sessão revogada, limite de duração e MFA removido; verifica credencial restrita, identidade e checksums antes da cópia. O despacho operacional permanece bloqueado até `operational_state=active`. A ativação central exige conciliação e é auditada. Uma resposta perdida depois do commit não desfaz a ativação; uma falha anterior mantém a origem bloqueada e permite repetição com nova autorização.
 
-Limites explícitos: dados operacionais v2 já existentes na base compartilhada são recusados, pois exigem migrador próprio; produtos com fotos sem manifesto verificado também impedem a conciliação. Arquivos não são copiados por este worker. Não há botão/CLI de corte liberado nesta etapa. Não execute corte real antes de concluir arquivos, recuperação, interface e configuração de produção.
+Limites explícitos: dados operacionais v2 já existentes na base compartilhada são recusados, pois exigem migrador próprio; produtos com fotos sem pacote verificado também impedem a conciliação. O worker copia fotos de uma exportação local revisada conforme `TENANT-ASSETS.md`. Não execute corte real antes de validar a interrupção de gravações/exportação do Storage, recuperação com bytes e configuração de produção.
+
+### Acompanhamento e execução manual
+
+Em **Empresas → Verificar banco**, o ADM vê a empresa/UUID, o diagnóstico e a solicitação de migração. A autorização exige confirmação explícita da interrupção de alterações, justificativa, versão atual e MFA recente. A consulta de andamento exige ADM/AAL2 e gera auditoria; nunca retorna sessão, token ou credenciais do operador. **Atualizar acompanhamento** consulta o estado real: aguardando operador, copiando/conferindo, conferido, ativo ou falha. Não existe marcação manual de banco pronto.
+
+O operador executa o comando abaixo em ambiente privado após configurar `ERP_CONTROL_OPERATOR_URL`, `ERP_CONTROL_CA` quando necessário, `ERP_PROVISIONER_URL`, `ERP_TENANT_CA` quando necessário e a URL restrita `ERP_TENANT_<UUID SEM HÍFENS, MAIÚSCULO>_URL`. A conexão de manutenção usa o banco derivado da empresa da solicitação central, nunca um nome passado pelo navegador. Todas as conexões validam TLS. Fotos exigem `ERP_LEGACY_PHOTO_MANIFEST`.
+
+```powershell
+node --experimental-strip-types scripts/cutover-tenant.mjs UUID_DA_SOLICITACAO
+```
+
+O comando copia, concilia e ativa apenas quando as verificações passam. Uma falha mantém a origem congelada; confira a causa, renove a autorização com MFA se necessário e repita o mesmo UUID. A UI acompanha as contagens e o estado do job. Esses comandos e o novo acompanhamento foram validados localmente; `tenant-cutover.sql` ainda não está instalado no Supabase central.
 
 ## Testes locais
 
@@ -60,7 +72,11 @@ Limites explícitos: dados operacionais v2 já existentes na base compartilhada 
 node --experimental-strip-types tests/tenant-identity.test.mjs
 node --experimental-strip-types tests/tenant-database.test.mjs
 node --experimental-strip-types tests/tenant-import.test.mjs
+node --experimental-strip-types tests/tenant-import.test.mjs --photos
 node --experimental-strip-types tests/tenant-cutover.test.mjs
+node --experimental-strip-types tests/legacy-photo-bundle.test.mjs
+node --experimental-strip-types tests/operator-connection.test.mjs
+node --experimental-strip-types tests/cutover-routes.test.mjs
 ```
 
 `tests/tenant-routing.sql` executa com `BEGIN/ROLLBACK` no controle central para verificar vínculo, políticas atualizadas, troca de ID e sessão revogada. O teste não substitui autenticação completa no navegador.
@@ -79,4 +95,4 @@ Consulte `COMPANY-WORKSPACE.md` para autorização, versão/idempotência, teste
 
 ## Arquivos empresariais
 
-A migração `006-assets` adiciona conteúdo binário limitado ao banco exclusivo. A API e a interface já usam esse armazenamento no branch. O importador de fotos antigas do Storage e o ensaio de recuperação com bytes continuam pendentes. Consulte `TENANT-ASSETS.md` antes do corte.
+A migração `006-assets` adiciona conteúdo binário limitado ao banco exclusivo. A API e a interface já usam esse armazenamento no branch. O importador aceita uma exportação local revisada de fotos antigas; a janela real do Storage permanece pendente. O ensaio nativo de recuperação de PNG/3MF passou em 26/09. Consulte `TENANT-ASSETS.md` antes do corte.

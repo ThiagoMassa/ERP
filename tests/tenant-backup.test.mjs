@@ -4,6 +4,8 @@ import {randomBytes,randomUUID} from 'node:crypto';
 import {readFile,writeFile,readdir,unlink,rmdir} from 'node:fs/promises';
 import {resolve,join} from 'node:path';
 import postgres from 'postgres';
+import {zipSync,strToU8} from 'fflate';
+import {validateAsset} from '../lib/server/asset-content.ts';
 import {tenantIdentity} from '../lib/server/tenant-identity.ts';
 import {provisionTenant,tenantMigrations} from '../lib/server/tenant-database.ts';
 import {createTenantBackup,inspectBackup,verifyTenantRecovery,restoreTenantBackup} from '../lib/server/tenant-backup.ts';
@@ -30,10 +32,21 @@ try{
   await sql`insert into public.products(id,owner_id,business_id,name,category,cost,price,stock,currency) values(${[product,otherProduct][i]},${author},${companyIds[i]},${'Peça confidencial '+i},'Peças','123.4567','987.6543',5,'CLF')`;
   await sql`update tenant.identity set operational_state='active' where singleton`;
  }
- const assetId=randomUUID(),photoBytes=Buffer.from('Foto original no backup'),photoPath=companyIds[0]+'/'+assetId+'.png';
+ const assetId=randomUUID(),photoBytes=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jZ1kAAAAASUVORK5CYII=','base64'),photoPath=companyIds[0]+'/'+assetId+'.png';
  await a`insert into tenant.assets(id,bucket_id,name,filename,mime,content,created_by) values(${assetId},'product-photos',${photoPath},'foto.png','image/png',${photoBytes},${author})`;
  await a`insert into tenant.uploads(bucket_id,name,size_bytes) values('product-photos',${photoPath},${photoBytes.length})`;
  await a`update public.products set image_path=${photoPath} where id=${product}`;
+ const modelId=randomUUID(),modelPath=companyIds[0]+'/'+modelId+'.3mf';
+ const modelBytes=Buffer.from(zipSync({
+  '[Content_Types].xml':strToU8('<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/></Types>'),
+  '_rels/.rels':strToU8('<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rel0" Target="/3D/3dmodel.model" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"/></Relationships>'),
+  '3D/3dmodel.model':strToU8('<model xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02" unit="millimeter"><resources><object id="1" type="model"><mesh><vertices><vertex x="0" y="0" z="0"/><vertex x="10" y="0" z="0"/><vertex x="0" y="10" z="0"/><vertex x="0" y="0" z="10"/></vertices><triangles><triangle v1="0" v2="2" v3="1"/><triangle v1="0" v2="1" v3="3"/><triangle v1="1" v2="2" v3="3"/><triangle v1="2" v2="0" v3="3"/></triangles></mesh></object></resources><build><item objectid="1"/></build></model>'),
+ }));
+ assert.equal(validateAsset(photoBytes,'product-photos','foto.png'),'image/png');
+ assert.equal(validateAsset(modelBytes,'erp-models','peca.3mf'),'model/3mf');
+ await a`insert into tenant.assets(id,bucket_id,name,filename,mime,content,created_by) values(${modelId},'erp-models',${modelPath},'peca.3mf','model/3mf',${modelBytes},${author})`;
+ await a`insert into tenant.uploads(bucket_id,name,size_bytes) values('erp-models',${modelPath},${modelBytes.length})`;
+ await a`insert into public.erp_files(business_id,product_id,name,path,size_bytes,created_by) values(${companyIds[0]},${product},'Peça original',${modelPath},${modelBytes.length},${author})`;
  const otherAsset=randomUUID();await b`insert into tenant.assets(id,bucket_id,name,filename,mime,content,created_by) values(${otherAsset},'erp-models',${companyIds[1]+'/'+otherAsset+'.3mf'},'outro.3mf','model/3mf',${Buffer.from('Arquivo exclusivo B')},${author})`;
  const options={company:companyIds[0],source:a,directory:root,key,connection,tools,retentionDays:30};
  backup=await createTenantBackup(options);
@@ -44,9 +57,12 @@ try{
  const encrypted=await readFile(archivePath),manifestText=await readFile(manifestPath,'utf8');
  assert.equal(encrypted.includes(Buffer.from('Peça confidencial')),false);
  assert.deepEqual(await inspectBackup({company:companyIds[0],backup:backup.id,directory:root,key}),backup);
- assert.equal(backup.tables.find(t=>t.schema==='tenant'&&t.name==='assets').rows,1);
+ assert.equal(backup.tables.find(t=>t.schema==='tenant'&&t.name==='assets').rows,2);
  // Live data changes after the snapshot must not alter the artifact or a recovery drill.
  await a`update public.products set stock=17,name='Registro posterior ao backup' where id=${product}`;
+ // Privileged fixture mutation verifies that recovery really replaces file bytes.
+ await a`update tenant.assets set content=${Buffer.alloc(photoBytes.length,1)} where id=${assetId}`;
+ await a`update tenant.assets set content=${Buffer.alloc(modelBytes.length,2)} where id=${modelId}`;
  assert.deepEqual(await createTenantBackup({...options,id:backup.id}),backup);
  assert.equal((await readdir(root)).length,1);
  const databaseCount=(await admin`select count(*)::int as n from pg_database`)[0].n;
@@ -82,6 +98,8 @@ try{
  const restored=await restoreTenantBackup(restoreOptions);assert.equal(restored.repeated,false);
  assert.deepEqual((await a`select content from tenant.assets where id=${assetId}`)[0].content,photoBytes);
  assert.equal((await a`select image_path from public.products where id=${product}`)[0].image_path,photoPath);
+ assert.deepEqual((await a`select content from tenant.assets where id=${modelId}`)[0].content,modelBytes);
+ assert.equal(Number((await a`select size_bytes from public.erp_files where path=${modelPath}`)[0].size_bytes),modelBytes.length);
  assert.equal((await b`select content from tenant.assets where id=${otherAsset}`)[0].content.toString(),'Arquivo exclusivo B');
  const restoredProduct=(await a`select stock::text as stock,price::text as price,owner_id,name from public.products where id=${product}`)[0];
  assert.deepEqual(restoredProduct,{stock:'5.000',price:'987.6543',owner_id:author,name:'Peça confidencial 0'});
@@ -99,6 +117,7 @@ try{
  assert.equal((await b`select stock::text as n from public.products where id=${otherProduct}`)[0].n,'5.000');
  console.log('PASS: pg_dump real criptografado, snapshot/decimais/autoria, manifesto autenticado, recuperação integral com comparação de tabelas e funções, banco temporário removido, outra empresa preservada, chave/empresa/arquivo adulterados recusados e limpeza de falha.');
  console.log('PASS: restauração sobre banco existente, autorização antes da escrita, cópia de segurança verificada, falha após DROP SCHEMA com rollback integral, conferência antes do commit, manutenção persistente, autoria original e ADM auditado, privilégios restritos e repetição sem sobrescrita.');
+ console.log('PASS: PNG e pacote 3MF restaurados byte a byte após adulteração controlada; referências, tamanhos e arquivos da outra empresa preservados.');
 }finally{
  await Promise.all(opened.map(sql=>sql.end({timeout:1})));
  for(const f of fixtures){await admin.unsafe(`drop database if exists "${f.database}" with (force)`);await admin.unsafe(`drop role if exists "${f.runtime}"`);await admin.unsafe(`drop role if exists "${f.owner}"`);}

@@ -114,3 +114,20 @@ begin
  return jsonb_build_object('status',next_status,'company',j.company_id,'actor',j.requested_by,'correlation',j.correlation_id);
 end $$;
 revoke all on function erp_control.cutover_step(uuid,text,jsonb) from public,anon,authenticated;
+
+-- Read-only progress for the global ADM. Session IDs and operator secrets stay private.
+create function erp_control.read_cutover(b uuid) returns jsonb language plpgsql security definer set search_path='' as $$
+declare u uuid:=erp_control.require_admin(false);c erp_control.companies;j jsonb;
+begin
+ select * into c from erp_control.companies where id=b;
+ if c.id is null then raise exception 'Empresa indisponível' using errcode='42501';end if;
+ select jsonb_build_object('id',id,'status',status,'requested_at',requested_at,'updated_at',updated_at,'counts',counts,'failure_code',failure_code,'correlation_id',correlation_id)
+ into j from erp_control.cutovers where company_id=b and status<>'cancelled';
+ insert into erp_control.audit(actor_id,company_id,action,entity,result,correlation_id) values(u,b,'tenant.cutover.read',b::text,'success',gen_random_uuid());
+ return jsonb_build_object('company',c.id,'name',(select name from public.business_units where id=c.id),'version',c.version,'location',c.data_location,'provisioning',c.provisioning,'job',j);
+end $$;
+create function public.erp_read_cutover(p_company uuid) returns jsonb language sql security invoker set search_path='' as $$
+ select erp_control.read_cutover(p_company)
+$$;
+revoke all on function erp_control.read_cutover(uuid),public.erp_read_cutover(uuid) from public,anon;
+grant execute on function erp_control.read_cutover(uuid),public.erp_read_cutover(uuid) to authenticated;

@@ -1,7 +1,7 @@
 // Local disposable PostgreSQL only. Uses the real control SQL and cutover worker.
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
-import {randomBytes,randomUUID} from 'node:crypto';
+import {randomBytes,randomUUID,createHash} from 'node:crypto';
 import postgres from 'postgres';
 import {provisionTenant,tenantMigrations,inspectTenant,assertTenantReady} from '../lib/server/tenant-database.ts';
 import {tenantIdentity,tenantConnectionOptions} from '../lib/server/tenant-identity.ts';
@@ -43,6 +43,21 @@ try {
  await control`select set_config('request.jwt.claims',${JSON.stringify(token)},false)`;
  await control`insert into public.business_units(id,owner_id,name,model) values(${ids[1]},${owner},'Empresa A','printing'),(${ids[2]},${owner},'Empresa B','retail')`;
  await control`insert into public.products(id,owner_id,business_id,name,category,cost,price,stock) values(${productA},${owner},${ids[1]},'A','Peças',1,2,5),(${productB},${owner},${ids[2]},'B','Peças',1,2,10)`;
+ // Legacy origin had no tenant file-reference trigger; the target still has it.
+ await control`drop trigger product_asset_reference on public.products`;
+ const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jZ1kAAAAASUVORK5CYII=','base64');
+ const photo={name:owner+'/legacy.png',filename:'legacy.png',mime:'image/png',size_bytes:png.length,sha256:createHash('sha256').update(png).digest('hex')};
+ const photoBundle={company:ids[1],photos:[photo],read:async()=>png};
+ await control`update public.products set image_path=${photo.name} where id=${productA}`;
+ const readProgress=async company=>(await control`select public.erp_read_cutover(${company}) as data`)[0].data;
+ const initial=await readProgress(ids[1]);assert.equal(initial.company,ids[1]);assert.equal(initial.job,null);
+ await control`select set_config('request.jwt.claims',${JSON.stringify({...token,aal:'aal1'})},false)`;
+ await assert.rejects(readProgress(ids[1]),e=>e.code==='42501');
+ await control`select set_config('request.jwt.claims',${JSON.stringify(token)},false)`;
+ await control`update erp_control.administrators set active=false where user_id=${owner}`;
+ await assert.rejects(readProgress(ids[1]),e=>e.code==='42501');
+ await control`update erp_control.administrators set active=true where user_id=${owner}`;
+ assert.equal((await control`select has_function_privilege('anon','public.erp_read_cutover(uuid)','execute') as allowed`)[0].allowed,false);
  const request=async company=>(await control`select public.erp_request_cutover(${company},(select version from erp_control.companies where id=${company}),'Migração validada em teste local',${randomUUID()}) as data`)[0].data.job_id;
  const jobA=await request(ids[1]);
  // Revocation must stop the operator even though its original request had MFA.
@@ -56,10 +71,13 @@ try {
  await assert.rejects(runTenantCutover({control,target:a,runtimeConnection:runtimeUrl(1),jobId:jobA,allowLocalTest:true}),e=>e.code==='42501');
  await control`update auth.mfa_factors set status='verified' where id=${factor}`;
  assert.equal(await request(ids[1]),jobA);
+ await assert.rejects(runTenantCutover({control,target:a,runtimeConnection:runtimeUrl(1),jobId:jobA,allowLocalTest:true,photoBundle:{...photoBundle,company:ids[2]}}),e=>e.code==='ASSET_BUNDLE_REQUIRED');
+ assert.equal((await a`select count(*)::int as n from tenant.assets`)[0].n,0);
+ assert.equal(await request(ids[1]),jobA);
  // Simulate loss of the response AFTER the database committed activation.
  let lost=false;
  const lostResponse=new Proxy(control,{apply(fn,thisArg,args){const result=Reflect.apply(fn,thisArg,args);if(!lost&&Array.isArray(args[0])&&args[0].join('').includes("'activate'")){lost=true;return Promise.resolve(result).then(()=>{throw new Error('Lost response');});}return result;}});
- const result=await runTenantCutover({control:lostResponse,target:a,runtimeConnection:runtimeUrl(1),jobId:jobA,allowLocalTest:true});
+ const result=await runTenantCutover({control:lostResponse,target:a,runtimeConnection:runtimeUrl(1),jobId:jobA,allowLocalTest:true,photoBundle});
  assert.equal(result.status,'activated');assert.equal(result.recovered,true);
  assertTenantReady(await inspectTenant(runtimeUrl(1),ids[1],{allowLocalTest:true}),migrations);
  const route=(await control`select public.erp_tenant_context(${ids[1]}) as data`)[0].data;
@@ -67,8 +85,14 @@ try {
  const runtime=postgres(tenantConnectionOptions(runtimeUrl(1),ids[1],{allowLocalTest:true}));opened.push(runtime);
  const products=(await runtime`select tenant.dispatch(${runtime.json({...route,epoch:route.access_epoch})},'read','products','{}',null) as data`)[0].data;
  assert.equal(products.rows.length,1);assert.equal(products.rows[0].id,productA);
+ const progress=await readProgress(ids[1]);assert.equal(progress.location,'tenant');assert.equal(progress.job.status,'activated');assert.equal(progress.job.counts.photos,1);
+ for(const field of ['session_id','token_issued_at','credential_ref'])assert.equal(Object.hasOwn(progress.job,field),false);
+ assert.ok((await control`select count(*)::int as n from erp_control.audit where action='tenant.cutover.read' and company_id=${ids[1]}`)[0].n>=2);
+ const asset=(await runtime`select tenant.dispatch(${runtime.json({...route,epoch:route.access_epoch})},'read','asset.read',${runtime.json({bucket:'product-photos',path:photo.name})},null) as data`)[0].data;
+ assert.equal(asset.sha256,photo.sha256);assert.deepEqual(Buffer.from(asset.content,'base64'),png);
  assert.equal((await control`select data_location from erp_control.companies where id=${ids[2]}`)[0].data_location,'legacy');
  assert.equal((await b`select count(*)::int as n from public.products`)[0].n,0);
+ assert.equal((await b`select count(*)::int as n from tenant.assets`)[0].n,0);
  const repeated=await runTenantCutover({control,target:a,runtimeConnection:runtimeUrl(1),jobId:jobA,allowLocalTest:true});
  assert.equal(repeated.repeated,true);
  assert.equal((await control`select count(*)::int as n from erp_control.audit where action='tenant.cutover.activate' and company_id=${ids[1]}`)[0].n,1);
@@ -86,6 +110,7 @@ try {
  assert.equal((await b`select count(*)::int as n from tenant.reconciliations`)[0].n,1);
  assert.equal((await a`select stock::text as n from public.products where id=${productA}`)[0].n,'5.000');
  console.log('PASS: worker real, autorização revogada/MFA removido negados, cópia/ativação/consulta por contexto central, falhas antes e depois do commit, retry sem duplicar, segunda empresa preservada.');
+ console.log('PASS: pacote de outra empresa recusado; foto legada importada e acessível pela credencial restrita após ativação; bytes e segunda empresa preservados.');
 } finally {
  await Promise.all(opened.map(sql=>sql.end({timeout:1})));
  for(const f of fixtures){await admin.unsafe(`drop database if exists "${f.database}" with (force)`);await admin.unsafe(`drop role if exists "${f.runtime}"`);await admin.unsafe(`drop role if exists "${f.owner}"`);}
