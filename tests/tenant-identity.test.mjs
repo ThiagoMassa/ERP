@@ -1,0 +1,22 @@
+import assert from 'node:assert/strict';
+import {tenantIdentity,tenantConnectionOptions} from '../lib/server/tenant-identity.ts';
+import {assertTenantReady} from '../lib/server/tenant-database.ts';
+
+const id='67138774-c746-463d-bfdd-4d24789d9916';
+const identity=tenantIdentity(id);
+assert.equal(identity.database,'erp_67138774c746463dbfdd4d24789d9916');
+assert.deepEqual(tenantIdentity(id.toUpperCase()),identity);
+for(const bad of ['postgres','',id+';drop database postgres','../../'+id])assert.throws(()=>tenantIdentity(bad));
+const url=`postgres://${identity.runtime}:test-password@database.example:5432/${identity.database}`;
+assert.equal(tenantConnectionOptions(url,id).ssl.rejectUnauthorized,true);
+assert.equal(tenantConnectionOptions(url,id,{allowLocalTest:true}).ssl.rejectUnauthorized,true);
+assert.equal(tenantConnectionOptions(url.replace('database.example','127.0.0.1'),id,{allowLocalTest:true}).ssl,false);
+for(const bad of [url+'?sslmode=disable',url+'#fragment',url.replace(identity.runtime,'postgres'),url.replace(identity.database,'postgres'),url.replace('postgres:','https:'),url.replace(':test-password','')])assert.throws(()=>tenantConnectionOptions(bad,id));
+assert.equal(tenantConnectionOptions(url.replace(identity.runtime,identity.runtime+'.abcdefghijklmnopqrst'),id).username,identity.runtime+'.abcdefghijklmnopqrst');
+assert.throws(()=>assertTenantReady({identity_matches:true,engine_installed:false,reconciled:false,migrations:[]},[]));
+assert.throws(()=>assertTenantReady({identity_matches:true,engine_installed:true,reconciled:true,migrations:[{version:'001-kernel',checksum:'wrong'}]},[{version:'001-kernel',checksum:'right'}]));
+const health={identity_matches:true,runtime_restricted:true,engine_installed:true,reconciled:true,operational_state:'active',migrations:[{version:'001-kernel',checksum:'right'}]};
+assert.doesNotThrow(()=>assertTenantReady(health,[{version:'001-kernel',checksum:'right'}]));
+assert.throws(()=>assertTenantReady({...health,runtime_restricted:false},[{version:'001-kernel',checksum:'right'}]));
+assert.throws(()=>assertTenantReady({...health,migrations:[...health.migrations,{version:'newer-than-app',checksum:'unknown'}]},[{version:'001-kernel',checksum:'right'}]));
+console.log('PASS: nomes derivados, credencial restrita, TLS obrigatório e bloqueio de prontidão incompleta.');

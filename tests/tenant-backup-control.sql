@@ -1,0 +1,60 @@
+-- Central authorization/state-machine fixture ONLY. Execute inside BEGIN/ROLLBACK.
+-- The synthetic artifact report below does not create or verify any production backup.
+do $$
+declare adm uuid:=gen_random_uuid();member_id uuid:=gen_random_uuid();sid uuid:=gen_random_uuid();msid uuid:=gen_random_uuid();factor uuid:=gen_random_uuid();b uuid:=gen_random_uuid();other_b uuid:=gen_random_uuid();key uuid:=gen_random_uuid();restore_id uuid:=gen_random_uuid();token jsonb;result jsonb;denied boolean;safety uuid;old_epoch uuid;
+begin
+ insert into auth.users(id,email) values(adm,'backup-adm-'||adm||'@example.invalid'),(member_id,'backup-member-'||member_id||'@example.invalid');
+ insert into auth.sessions(id,user_id,created_at,aal) values(sid,adm,now(),'aal2'),(msid,member_id,now(),'aal1');
+ insert into auth.mfa_factors(id,user_id,factor_type,status,created_at,updated_at) values(factor,adm,'totp','verified',now(),now());
+ insert into erp_control.administrators(user_id) values(adm);
+ insert into public.business_units(id,owner_id,name,model) values(b,adm,'Backup fixture A','printing'),(other_b,adm,'Backup fixture B','printing');
+ token:=jsonb_build_object('sub',member_id,'session_id',msid,'exp',floor(extract(epoch from now()+interval '1 hour')),'iat',floor(extract(epoch from now())),'aal','aal1');
+ perform set_config('request.jwt.claims',token::text,true);
+ result:=public.erp_request_maintenance('backup',b,null,30,1,'Teste administrativo de backup',null,null,key);
+ if result->>'ok'<>'false' then raise exception 'FAIL usuário comum solicita backup';end if;
+ token:=token||jsonb_build_object('sub',adm,'session_id',sid,'aal','aal2','amr',jsonb_build_array(jsonb_build_object('method','totp','timestamp',floor(extract(epoch from now()-interval '10 minutes')))));
+ perform set_config('request.jwt.claims',token::text,true);
+ if public.erp_request_maintenance('backup',b,null,30,1,'Teste administrativo de backup',null,null,key)->>'ok'<>'false' then raise exception 'FAIL MFA antigo';end if;
+ token:=token||jsonb_build_object('amr',jsonb_build_array(jsonb_build_object('method','totp','timestamp',floor(extract(epoch from now())))));
+ perform set_config('request.jwt.claims',token::text,true);
+ if public.erp_request_maintenance('backup',b,null,30,1,'Teste administrativo de backup',null,null,key)->>'ok'<>'false' then raise exception 'FAIL banco pendente';end if;
+ -- Test fixture only. No readiness changes survive rollback.
+ update erp_control.companies set provisioning='ready',database_identity='erp_'||replace(id::text,'-',''),credential_ref='ERP_TENANT_'||upper(replace(id::text,'-',''))||'_URL',health_checked_at=now(),schema_version='005-access-epoch' where id in (b,other_b);
+ result:=public.erp_request_maintenance('backup',b,null,30,1,'Teste administrativo de backup',null,null,key);
+ if result->>'ok'<>'true' then raise exception 'FAIL backup request: %',result;end if;
+ if public.erp_request_maintenance('backup',b,null,30,1,'Teste administrativo de backup',null,null,key)->>'job'<>key::text then raise exception 'FAIL retry';end if;
+ if public.erp_request_maintenance('backup',b,null,30,1,'Outra justificativa para conflito',null,null,key)->>'ok'<>'false' then raise exception 'FAIL chave conflitante';end if;
+ if public.erp_request_maintenance('backup',b,null,30,1,'Outro backup simultâneo',null,null,gen_random_uuid())->>'ok'<>'false' then raise exception 'FAIL manutenção concorrente';end if;
+ if has_function_privilege('authenticated','erp_control.maintenance_step(uuid,text,jsonb)','execute') or has_function_privilege('authenticated','erp_control.authorize_maintenance(uuid)','execute') or has_table_privilege('authenticated','erp_control.maintenance_jobs','select') or has_function_privilege('anon','public.erp_read_maintenance(uuid,integer,integer,text)','execute') then raise exception 'FAIL privilégio privado';end if;
+ perform erp_control.maintenance_step(key,'start');
+ perform erp_control.maintenance_step(key,'artifact',jsonb_build_object('id',key,'company',b,'sha256',repeat('a',64),'bytes',1000,'key_id','test-only','created_at',now(),'verified_at',now(),'retention_until',now()+interval '30 days'));
+ result:=public.erp_read_maintenance(b);
+ if (result->>'backup_count')::int<>1 or (result->>'busy')::boolean or result->'backups'->0->>'status'<>'verified' or result::text like '%session_id%' then raise exception 'FAIL listagem';end if;
+ if jsonb_array_length(public.erp_read_maintenance(b,1)->'backups')<>0 then raise exception 'FAIL paginação';end if;
+ if public.erp_request_maintenance('restore',other_b,key,30,1,'Teste de restauração cruzada',other_b,key,restore_id)->>'ok'<>'false' then raise exception 'FAIL backup de outra empresa';end if;
+ if public.erp_request_maintenance('restore',b,key,30,1,'Teste de restauração autorizada',other_b,key,restore_id)->>'ok'<>'false' then raise exception 'FAIL confirmação';end if;
+ select access_epoch into old_epoch from erp_control.companies where id=b;
+ result:=public.erp_request_maintenance('restore',b,key,30,1,'Teste de restauração autorizada',b,key,restore_id);
+ if result->>'ok'<>'true' then raise exception 'FAIL restore request: %',result;end if;
+ if (select provisioning from erp_control.companies where id=b)<>'suspended' or (select access_epoch from erp_control.companies where id=b)=old_epoch then raise exception 'FAIL suspensão e epoch';end if;
+ perform erp_control.maintenance_step(restore_id,'start');
+ denied:=false;begin perform erp_control.maintenance_step(restore_id,'release');exception when others then denied:=true;end;
+ if not denied then raise exception 'FAIL liberação sem restore';end if;
+ select safety_id into safety from erp_control.maintenance_jobs where id=restore_id;
+ perform erp_control.maintenance_step(restore_id,'artifact',jsonb_build_object('id',safety,'company',b,'sha256',repeat('b',64),'bytes',1000,'key_id','test-only','created_at',now(),'verified_at',now(),'retention_until',now()+interval '30 days'));
+ perform erp_control.maintenance_step(restore_id,'restoring');
+ update erp_control.administrators set active=false where user_id=adm;
+ denied:=false;begin perform erp_control.maintenance_step(restore_id,'restored',jsonb_build_object('backup',key,'safety',safety));exception when insufficient_privilege then denied:=true;end;
+ if not denied then raise exception 'FAIL ADM revogado continua operação';end if;
+ update erp_control.administrators set active=true where user_id=adm;
+ perform erp_control.maintenance_step(restore_id,'fail','{"code":"secret must not be logged"}');
+ if (select failure_code from erp_control.maintenance_jobs where id=restore_id)<>'MAINTENANCE_FAILED' or (select provisioning from erp_control.companies where id=b)<>'suspended' then raise exception 'FAIL falha';end if;
+ result:=public.erp_request_maintenance('restore',b,key,30,2,'Teste de restauração autorizada',b,key,restore_id);
+ perform erp_control.maintenance_step(restore_id,'start');
+ perform erp_control.maintenance_step(restore_id,'restored',jsonb_build_object('backup',key,'safety',safety));
+ perform erp_control.maintenance_step(restore_id,'release');perform erp_control.maintenance_step(restore_id,'complete');
+ if erp_control.maintenance_step(restore_id,'fail')->>'status'<>'complete' then raise exception 'FAIL resultado completo regrediu';end if;
+ if (select provisioning from erp_control.companies where id=other_b)<>'ready' or (select access_epoch from erp_control.companies where id=other_b)<>old_epoch then raise exception 'FAIL outra empresa alterada';end if;
+ if not exists(select 1 from erp_control.audit where actor_id=adm and action='maintenance.restore.complete' and correlation_id=restore_id and reason='Teste de restauração autorizada') then raise exception 'FAIL auditoria';end if;
+ raise notice 'PASS central: ADM/MFA, prontidão, confirmação, idempotência, exclusão mútua, privilégio privado, revogação, suspensão/epoch, artefatos, paginação, auditoria e segunda empresa preservada';
+end $$;

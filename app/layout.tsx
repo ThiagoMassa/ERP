@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import "./operations.css";
 
 export const metadata: Metadata = {
   title: "Fluxo · Seu negócio, por inteiro",
@@ -24,4 +25,5 @@ export default function RootLayout({
     </html>
   );
 }
+
 
