@@ -14,6 +14,8 @@ Nome, versão e autor da atualização ficam no cadastro privado. O evento regis
 
 ## Instalação e pendências
 
+`db/admin-account-audit.sql` é uma migração incremental adicional, ainda não aplicada. Normaliza novos eventos `user.status` e `user.revoke` como ações globais, com empresa nula e ID do usuário no registro. Isso vale também para chamadas diretas à RPC, independentemente do contexto enviado. O formulário e a API também usam contexto global; a API valida situação, versão e justificativa. Eventos antigos permanecem imutáveis. Não confundir bloqueio global da identidade com suspensão de um vínculo empresarial.
+
 `db/admin-users.sql` depende de `db/admin-control.sql`. É um módulo novo ainda não registrado/aplicado no Supabase em 27/09/2026; requer migração incremental própria antes da publicação do frontend. Não reaplicar ou editar migrações anteriores instaladas. Até instalar, a API responde com indisponibilidade explícita; não cai silenciosamente na consulta antiga.
 
 Continuam pendentes criação de identidades, convites, recuperação de senha, alteração verificada do e-mail, ampliação dos demais dados cadastrais e revisão autenticada no navegador. O envio de e-mails continua adiado pelo titular. O histórico operacional completo continua sendo tratado separadamente.

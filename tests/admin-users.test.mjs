@@ -19,7 +19,7 @@ try{
  create table auth.mfa_factors(id uuid primary key,user_id uuid,status text);
  create function auth.jwt() returns jsonb language sql stable as $$select current_setting('request.jwt.claims',true)::jsonb$$;
  create function auth.uid() returns uuid language sql stable as $$select (auth.jwt()->>'sub')::uuid$$;`);
- for(const file of ['admin-control','admin-users'])await db.unsafe(await readFile(new URL('../db/'+file+'.sql',import.meta.url),'utf8'));
+ for(const file of ['admin-control','admin-users','admin-account-audit'])await db.unsafe(await readFile(new URL('../db/'+file+'.sql',import.meta.url),'utf8'));
  // The disposable tenant starts stricter than Supabase's central exposed schema.
  await db`grant usage on schema public to authenticated`;
  const adm=randomUUID(),user=randomUUID(),session=randomUUID(),company=randomUUID(),other=randomUUID(),now=Math.floor(Date.now()/1000);
@@ -71,6 +71,12 @@ try{
  await db`insert into auth.users(id,email) select gen_random_uuid(),'page-'||i||'@example.invalid' from generate_series(1,25) i`;
  const firstPage=await read({query:'page-'}),secondPage=await read({query:'page-',page:1});
  assert.equal(firstPage.count,25);assert.equal(firstPage.rows.length,20);assert.equal(secondPage.rows.length,5);assert.equal(new Set([...firstPage.rows,...secondPage.rows].map(r=>r.id)).size,25);
+ const accountCorrelation=randomUUID();
+ const accountResult=(await db`select public.erp_admin_command('user.revoke',${db.json({user,company,version:1,reason:'Revogação global em teste'})},${accountCorrelation}) as data`)[0].data;
+ assert.equal(accountResult.ok,true);
+ const accountEvent=(await db`select * from erp_control.audit where correlation_id=${accountCorrelation}`)[0];
+ assert.equal(accountEvent.company_id,null);assert.equal(accountEvent.subject_id,user);assert.equal(accountEvent.entity,user);assert.equal(accountEvent.actor_id,adm);
+ assert.equal((await db`select active from erp_control.memberships where company_id=${company} and user_id=${user}`)[0].active,false);
  await db`delete from auth.sessions where id=${session}`;await assert.rejects(save('Sessão revogada',2),e=>e.code==='28000');
  console.log('PASS: perfil administrativo versionado, filtros/nome/estado/confirmação, MFA, sessão, auditoria antes/depois e privilégios restritos em PostgreSQL real.');
 }finally{

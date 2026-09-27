@@ -29,7 +29,14 @@ try{
  const user='11111111-1111-4111-8111-111111111111';
  const command={mode:'command',action:'user.status',data:{user,status:'blocked',version:2,reason:'Bloqueio solicitado pelo titular'}};
  const success=await send(command);assert.equal(success.status,200);assert.equal(success.headers.get('cache-control'),'no-store');assert.equal(success.headers.get('x-content-type-options'),'nosniff');
- assert.equal(calls.at(-1).name,'erp_admin_command');assert.deepEqual(calls.at(-1).args.p_data,command.data);assert.match(calls.at(-1).args.p_correlation,/^[0-9a-f-]{36}$/);
+ assert.equal((await send({...command,data:{...command.data,company:user}})).status,200);assert.equal(calls.at(-1).args.p_data.company,null);
+ const revoke={mode:'command',action:'user.revoke',data:{user,version:2,reason:'Revogação solicitada pelo titular',company:user}};
+ assert.equal((await send(revoke)).status,200);assert.equal(calls.at(-1).args.p_data.company,null);
+ const beforeInvalid=calls.length;
+ for(const invalid of [{...command,data:{...command.data,status:'admin'}},{...command,data:{...command.data,version:-1}},{...revoke,data:{...revoke.data,reason:''}}])assert.equal((await send(invalid)).status,400);
+ assert.equal(calls.length,beforeInvalid);
+ await send(command);
+ assert.equal(calls.at(-1).name,'erp_admin_command');assert.deepEqual(calls.at(-1).args.p_data,{...command.data,company:null});assert.match(calls.at(-1).args.p_correlation,/^[0-9a-f-]{36}$/);
  assert.equal((await send({mode:'read',section:'users',filters:{company:user,page:2,query:'nome'}})).status,200);
  assert.equal(calls.at(-1).name,'erp_admin_read');assert.deepEqual(calls.at(-1).args,{p_section:'users',p_filters:{company:user,page:2,query:'nome'}});
  assert.equal((await send({mode:'read',section:'user_directory',filters:{query:'Nome',status:'suspended'}})).status,200);

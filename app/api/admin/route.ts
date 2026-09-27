@@ -2,7 +2,7 @@ import {createClient} from '@supabase/supabase-js';
 import {z} from 'zod';
 import {readBoundedBody} from '@/lib/server/asset-content';
 import {adminErrorMessage} from '@/lib/admin-errors';
-import {adminUserFilters,adminUserProfile} from '@/lib/admin-users';
+import {adminUserFilters,adminUserProfile,adminUserStatus,adminUserRevoke} from '@/lib/admin-users';
 
 export const dynamic = 'force-dynamic';
 export async function POST(request: Request) {
@@ -24,6 +24,12 @@ export async function POST(request: Request) {
   const db=createClient(url,key,{global:{headers:{Authorization:authorization}},auth:{persistSession:false,autoRefreshToken:false}});
   const {data:identity,error:authError}=await db.auth.getUser(authorization.slice(7));
   if(authError||!identity.user)return reply({error:'Sessão inválida. Entre novamente.'},401);
+  if(body.mode==='command'&&(body.action==='user.status'||body.action==='user.revoke')){
+   const input=(body.action==='user.status'?adminUserStatus:adminUserRevoke).safeParse(body.data);
+   if(!input.success)return reply({error:'Confira a conta, a situação, a versão e a justificativa.'},400);
+   // Account-wide operations must never be attributed to a selected company.
+   body.data={...input.data,company:null};
+  }
   if(body.mode==='read'&&body.section==='user_directory'){
    const input=adminUserFilters.safeParse(body.filters||{});
    if(!input.success)return reply({error:'Confira os filtros de usuários.'},400);

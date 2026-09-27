@@ -58,7 +58,7 @@ function AdminPanel({db}:{db:SupabaseClient}){
  const selected=companies.find(c=>c.id===company);
  function navigate(next:string){setAuditUser({actor:'',subject:''});setSection(next);setPage(0);setQuery('');setError('');setMenu(false)}
  async function save(form:HTMLFormElement){if(!modal||busy)return;setBusy(true);setError('');try{
-  const data=values(form);await api(db,{mode:'command',action:modal.type,data:modal.type==='user.profile'?{display_name:data.display_name,reason:data.reason,user:modal.row.id,version:modal.row.profile_version??0}:{...data,company:modal.type==='membership.save'?(modal.row.company_id||data.company):(modal.row.company_id||modal.row.id||company),user:modal.type.startsWith('user.')||modal.type==='membership.save'?(modal.row.user_id||modal.row.id):undefined,version:modal.row.version??0}});
+  const data=values(form);await api(db,{mode:'command',action:modal.type,data:modal.type==='user.profile'?{display_name:data.display_name,reason:data.reason,user:modal.row.id,version:modal.row.profile_version??0}:{...data,company:modal.type.startsWith('user.')?null:modal.type==='membership.save'?(modal.row.company_id||data.company):(modal.row.company_id||modal.row.id||company),user:modal.type.startsWith('user.')||modal.type==='membership.save'?(modal.row.user_id||modal.row.id):undefined,version:modal.row.version??0}});
   setModal(null);setNotice('Alteração registrada na auditoria.');setRevision(v=>v+1);
  }catch(e){setError(errorMessage(e))}finally{setBusy(false)}}
  const reason:FieldSpec={key:'reason',label:'Justificativa',type:'textarea',required:true,hint:'Descreva o motivo em pelo menos 10 caracteres.'};

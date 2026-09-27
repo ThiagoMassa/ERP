@@ -17,6 +17,8 @@ Esta revisão está em desenvolvimento. Não confundir a compilação local com 
 
 ## Código local e testes
 
+- Corrigido o contexto de bloqueio/revogação global: o formulário não envia o ID do usuário como empresa, a API valida os comandos e normaliza o contexto, e `db/admin-account-audit.sql` garante empresa nula/identificador do usuário em novos eventos mesmo via RPC direta. Migração nova não aplicada; histórico anterior preservado. Testes HTTP e PostgreSQL real aprovados, incluindo preservação dos vínculos.
+
 - Atalhos de histórico individual na lista de usuários: ações realizadas pela identidade ou alterações na conta, com filtros visíveis na auditoria. Abrem contexto global para incluir eventos cadastrais sem empresa. Escopo: histórico central e últimos 30 dias ajustáveis; ainda não representa a coleta completa de eventos operacionais/autenticação.
 
 - Diretório administrativo de usuários com nome, ID, e-mail, situação, criação, último acesso, confirmação e vínculos/perfis. Busca literal por nome/e-mail/ID, filtros de conta/confirmação/empresa e páginas de 20 registros. Edição do nome em cadastro central privado, sem alterar autenticação ou conceder perfil ADM: MFA recente, justificativa, versão e auditoria antes/depois. `db/admin-users.sql` ainda não registrado/aplicado em produção. Testes SQL reais passaram para concorrência com duas conexões, paginação, filtros, privilégios, MFA e sessão; HTTP/TypeScript/lint aprovados. Revisão visual autenticada desta alteração permanece pendente.
