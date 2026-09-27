@@ -19,6 +19,7 @@
     "test:audit": "node --experimental-strip-types tests/admin-audit-routes.test.mjs && node --experimental-strip-types tests/admin-audit.test.mjs",
     "test:admin-api": "node --experimental-strip-types tests/admin-routes.test.mjs",
     "test:admin-users": "node --experimental-strip-types tests/admin-routes.test.mjs && node --experimental-strip-types tests/admin-users.test.mjs",
+    "test:admin-records": "node --experimental-strip-types tests/admin-record-routes.test.mjs && node --experimental-strip-types tests/admin-records.test.mjs",
     "test:maintenance": "node --experimental-strip-types tests/tenant-maintenance.test.mjs",
     "test:workspace": "node --experimental-strip-types tests/erp-transport.test.mjs && node --experimental-strip-types tests/company-workspace.test.mjs",
     "test:assets": "node --experimental-strip-types tests/asset-content.test.mjs && node --experimental-strip-types tests/asset-routes.test.mjs && node --experimental-strip-types tests/asset-transport.test.mjs && node --experimental-strip-types tests/tenant-assets.test.mjs"

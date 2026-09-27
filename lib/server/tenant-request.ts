@@ -3,11 +3,16 @@ import {createClient} from '@supabase/supabase-js';
 import postgres from 'postgres';
 import {inspectTenant,assertTenantReady,tenantMigrations} from './tenant-database';
 import {tenantIdentity,tenantConnectionOptions,TenantConfigurationError} from './tenant-identity';
+import {adminRecordRequest} from '../admin-records';
 
 export type TenantRequest = {company: string|null; mode: 'read'|'command'; operation: string; data: Record<string,unknown>; key?: string};
 
 /** Each request rechecks the central live session and policies. No authorization cache. */
-export async function executeTenantRequest(authorization: string, request: TenantRequest) {
+export async function executeTenantRequest(authorization: string, request: TenantRequest, scope:'company'|'admin-read'='company') {
+  if(scope==='admin-read'){
+    const checked=adminRecordRequest.safeParse({company:request.company,operation:request.operation,filters:request.data});
+    if(request.mode!=='read'||request.key||!checked.success)throw new TenantConfigurationError('INVALID_OPERATION','Consulta administrativa inválida.');
+  }
   const url=process.env.SUPABASE_URL,key=process.env.SUPABASE_PUBLISHABLE_KEY;
   if(!url||!key)throw new TenantConfigurationError('UNAVAILABLE','Autenticação indisponível.');
   const control=createClient(url,key,{global:{headers:{Authorization:authorization}},auth:{persistSession:false,autoRefreshToken:false}});
@@ -30,7 +35,7 @@ export async function executeTenantRequest(authorization: string, request: Tenan
     return data;
   }
   if(!request.company)throw new TenantConfigurationError('INVALID_OPERATION','Selecione uma empresa para continuar.');
-  const {data:context,error}=await control.rpc('erp_tenant_context',{p_company:request.company});
+  const {data:context,error}=await control.rpc(scope==='admin-read'?'erp_admin_record_context':'erp_tenant_context',scope==='admin-read'?{p_company:request.company,p_operation:request.operation}:{p_company:request.company});
   if(error||!context||context.actor!==identity.user.id||context.company!==request.company.toLowerCase()) {
     throw new TenantConfigurationError('FORBIDDEN','Empresa ou sessão indisponível para esta conta.');
   }
