@@ -17,6 +17,8 @@ Esta revisão está em desenvolvimento. Não confundir a compilação local com 
 
 ## Código local e testes
 
+- A API administrativa geral limita a leitura a 32 KiB de bytes, cancela streams maiores e valida o envelope antes de chamar as RPCs. Erros internos não são repassados; mensagens revisadas de concorrência continuam disponíveis. `npm run test:admin-api` cobre autenticação, payload inválido, bytes multibyte, cancelamento do stream, preservação dos comandos de conta/consulta e sanitização de erros, inclusive manutenção. Usa Auth/RPC simulados; não substitui os testes SQL e o login real. Cadastro/convite/recuperação e edição de perfil continuam pendentes.
+
 - Histórico administrativo com filtros de empresa, responsável, usuário afetado, registro, operação, resultado e período UTC. Paginação de 50 eventos, IDs bigint preservados como texto, detalhes antes/depois e exportação JSON de até 5000 eventos; excesso é recusado, sem truncamento. Consulta exige ADM/AAL2; exportação exige MFA recente e gera auditoria. Resumo dos filtros aplicados e layout responsivo. Consulte `ADMIN-AUDIT.md`.
 - `db/admin-audit.sql` é um novo módulo SQL testado em PostgreSQL local descartável, ainda não registrado/aplicado como migração no Supabase. Testes cobrem filtros combinados, precisão, paginação, limites, privilégios, revogação, MFA e handler HTTP. Revisão visual usa o componente real com API fictícia; não comprova autenticação real. A nova tela cobre o histórico central, sem unificar ainda todos os eventos operacionais dos bancos empresariais.
 
