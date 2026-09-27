@@ -15,8 +15,8 @@ async function query(db:SupabaseClient,mode:'read'|'export',filters:AuditFilters
  const response=await fetch('/api/admin/audit',{method:'POST',headers:{Authorization:'Bearer '+data.session.access_token,'Content-Type':'application/json'},body:JSON.stringify({mode,filters}),signal});
  if(!response.ok){const failure=z.object({error:z.string()}).safeParse(await response.json());throw new Error(failure.success?failure.data.error:'Consulta indisponível.');}return response;
 }
-export function AdminAudit({db,company,onReauth}:{db:SupabaseClient;company:string;onReauth:()=>void}){
- const [filters,setFilters]=useState<AuditFilters>(()=>auditFilters.parse({company:company||null,from:day(new Date(Date.now()-29*86400000)),to:day(new Date())}));
+export function AdminAudit({db,company,onReauth,initialActor='',initialSubject=''}:{db:SupabaseClient;company:string;onReauth:()=>void;initialActor?:string;initialSubject?:string}){
+ const [filters,setFilters]=useState<AuditFilters>(()=>auditFilters.parse({company:company||null,actor:initialActor||null,subject:initialSubject||null,from:day(new Date(Date.now()-29*86400000)),to:day(new Date())}));
  const [data,setData]=useState<Results|null>(null),[error,setError]=useState(''),[notice,setNotice]=useState(''),[downloading,setDownloading]=useState(false),[previous,setPrevious]=useState<(string|null)[]>([]);
  const exportController=useRef<AbortController|null>(null),exporting=useRef(false);
  useEffect(()=>{
@@ -49,7 +49,7 @@ export function AdminAudit({db,company,onReauth}:{db:SupabaseClient;company:stri
   <form onSubmit={e=>{e.preventDefault();apply(e.currentTarget)}}>
    <fieldset disabled={downloading} className="adm-audit-filters"><legend>Filtros da consulta</legend>
     <label>De (UTC)<input name="from" type="date" defaultValue={filters.from} required/></label><label>Até (UTC)<input name="to" type="date" defaultValue={filters.to} required/></label>
-    <label>Responsável (UUID)<input name="actor" placeholder="Quem realizou a ação"/></label><label>Usuário afetado (UUID)<input name="subject" placeholder="Conta envolvida"/></label>
+    <label>Responsável (UUID)<input name="actor" defaultValue={initialActor} placeholder="Quem realizou a ação"/></label><label>Usuário afetado (UUID)<input name="subject" defaultValue={initialSubject} placeholder="Conta envolvida"/></label>
     <label>Registro (ID exato)<input name="entity" maxLength={200} placeholder="Identificador do registro"/></label><label>Operação<input name="action" maxLength={160} placeholder="Ex.: membership ou tenant"/></label>
     <label>Resultado<select name="result"><option value="">Todos</option><option value="success">Concluído</option><option value="denied">Negado</option><option value="failed">Falhou</option></select></label>
     <button className="primary">Aplicar filtros</button>

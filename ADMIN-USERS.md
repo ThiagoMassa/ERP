@@ -6,6 +6,8 @@ Busca literal por trecho do nome/e-mail ou ID completo, filtros de situação e 
 
 ## Editar nome
 
+Na lista, **Ações do usuário** abre a auditoria com o responsável preenchido; **Histórico da conta** preenche o usuário afetado. Ambos abrem o contexto global e os últimos 30 dias para incluir alterações cadastrais sem empresa associada. Os filtros permanecem visíveis e editáveis, e é possível selecionar outra empresa ou período. Entrar novamente pelo menu Auditoria limpa o atalho individual. O alcance continua sendo o histórico central existente, sem presumir cobertura de todos os eventos operacionais ou de autenticação.
+
 O botão **Editar nome** abre o formulário administrativo com justificativa. A função `erp_admin_user_profile` exige MFA recente e a versão lida. Bloqueia a identidade durante a operação, inclusive na criação do primeiro perfil: duas edições com a mesma versão não podem ambas sobrescrever o cadastro. Conflitos retornam HTTP 409; atualize a lista e revise a alteração.
 
 Nome, versão e autor da atualização ficam no cadastro privado. O evento registra o ADM real, usuário afetado, ID do registro, antes/depois, justificativa e correlação. Esta operação não altera senha, e-mail de autenticação, situação global, vínculos nem o cadastro de administradores. Essas decisões não são derivadas do nome cadastral.
