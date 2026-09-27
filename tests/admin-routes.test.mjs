@@ -32,6 +32,13 @@ try{
  assert.equal(calls.at(-1).name,'erp_admin_command');assert.deepEqual(calls.at(-1).args.p_data,command.data);assert.match(calls.at(-1).args.p_correlation,/^[0-9a-f-]{36}$/);
  assert.equal((await send({mode:'read',section:'users',filters:{company:user,page:2,query:'nome'}})).status,200);
  assert.equal(calls.at(-1).name,'erp_admin_read');assert.deepEqual(calls.at(-1).args,{p_section:'users',p_filters:{company:user,page:2,query:'nome'}});
+ assert.equal((await send({mode:'read',section:'user_directory',filters:{query:'Nome',status:'suspended'}})).status,200);
+ assert.equal(calls.at(-1).name,'erp_admin_users');assert.equal(calls.at(-1).args.p_filters.status,'suspended');
+ const profile={mode:'command',action:'user.profile',data:{user,display_name:'Nome Completo',version:0,reason:'Correção cadastral solicitada'}};
+ assert.equal((await send(profile)).status,200);assert.equal(calls.at(-1).name,'erp_admin_user_profile');assert.equal(calls.at(-1).args.p_version,0);
+ assert.equal((await send({...profile,data:{...profile.data,role:'admin'}})).status,400);
+ assert.equal((await send({...profile,data:{...profile.data,display_name:''}})).status,400);
+ result={data:null,error:{code:'40001',message:'Registro alterado. Atualize antes de salvar.'}};assert.equal((await send(profile)).status,409);
  for(const failure of [{data:null,error:{code:'42501',message:'password=private database.internal'}},{data:{ok:false,error:'password=private database.internal'},error:null}]){
   result=failure;const response=await send(command);assert.equal(response.status,403);assert.ok(!(await response.text()).includes('private'));
  }

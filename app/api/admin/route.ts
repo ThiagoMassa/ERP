@@ -2,6 +2,7 @@ import {createClient} from '@supabase/supabase-js';
 import {z} from 'zod';
 import {readBoundedBody} from '@/lib/server/asset-content';
 import {adminErrorMessage} from '@/lib/admin-errors';
+import {adminUserFilters,adminUserProfile} from '@/lib/admin-users';
 
 export const dynamic = 'force-dynamic';
 export async function POST(request: Request) {
@@ -23,6 +24,20 @@ export async function POST(request: Request) {
   const db=createClient(url,key,{global:{headers:{Authorization:authorization}},auth:{persistSession:false,autoRefreshToken:false}});
   const {data:identity,error:authError}=await db.auth.getUser(authorization.slice(7));
   if(authError||!identity.user)return reply({error:'Sessão inválida. Entre novamente.'},401);
+  if(body.mode==='read'&&body.section==='user_directory'){
+   const input=adminUserFilters.safeParse(body.filters||{});
+   if(!input.success)return reply({error:'Confira os filtros de usuários.'},400);
+   const {data,error}=await db.rpc('erp_admin_users',{p_filters:input.data});
+   if(error)return reply({error:error.code==='PGRST202'?'Cadastro administrativo aguardando instalação.':adminErrorMessage(error.message)},error.code==='PGRST202'?503:403);
+   return reply({data});
+  }
+  if(body.mode==='command'&&body.action==='user.profile'){
+   const input=adminUserProfile.safeParse(body.data);
+   if(!input.success)return reply({error:'Confira nome, usuário, versão e justificativa.'},400);
+   const v=input.data;const {data,error}=await db.rpc('erp_admin_user_profile',{p_user:v.user,p_name:v.display_name,p_version:v.version,p_reason:v.reason});
+   if(error)return reply({error:error.code==='PGRST202'?'Cadastro administrativo aguardando instalação.':adminErrorMessage(error.message)},error.code==='40001'?409:error.code==='PGRST202'?503:403);
+   return reply({data});
+  }
   if(body.mode==='read'&&body.section==='maintenance'){
    const input=z.object({company:z.string().uuid(),page:z.number().int().min(0).max(100000).default(0),jobPage:z.number().int().min(0).max(100000).default(0),status:z.enum(['requested','running','verified','failed']).nullable().default(null)}).strict().safeParse(body.filters);
    if(!input.success)return reply({error:'Selecione uma empresa e filtros válidos.'},400);

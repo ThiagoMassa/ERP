@@ -17,6 +17,8 @@ Esta revisão está em desenvolvimento. Não confundir a compilação local com 
 
 ## Código local e testes
 
+- Diretório administrativo de usuários com nome, ID, e-mail, situação, criação, último acesso, confirmação e vínculos/perfis. Busca literal por nome/e-mail/ID, filtros de conta/confirmação/empresa e páginas de 20 registros. Edição do nome em cadastro central privado, sem alterar autenticação ou conceder perfil ADM: MFA recente, justificativa, versão e auditoria antes/depois. `db/admin-users.sql` ainda não registrado/aplicado em produção. Testes SQL reais passaram para concorrência com duas conexões, paginação, filtros, privilégios, MFA e sessão; HTTP/TypeScript/lint aprovados. Revisão visual autenticada desta alteração permanece pendente.
+
 - A API administrativa geral limita a leitura a 32 KiB de bytes, cancela streams maiores e valida o envelope antes de chamar as RPCs. Erros internos não são repassados; mensagens revisadas de concorrência continuam disponíveis. `npm run test:admin-api` cobre autenticação, payload inválido, bytes multibyte, cancelamento do stream, preservação dos comandos de conta/consulta e sanitização de erros, inclusive manutenção. Usa Auth/RPC simulados; não substitui os testes SQL e o login real. Cadastro/convite/recuperação e edição de perfil continuam pendentes.
 
 - Histórico administrativo com filtros de empresa, responsável, usuário afetado, registro, operação, resultado e período UTC. Paginação de 50 eventos, IDs bigint preservados como texto, detalhes antes/depois e exportação JSON de até 5000 eventos; excesso é recusado, sem truncamento. Consulta exige ADM/AAL2; exportação exige MFA recente e gera auditoria. Resumo dos filtros aplicados e layout responsivo. Consulte `ADMIN-AUDIT.md`.
