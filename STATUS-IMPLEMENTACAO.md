@@ -1,4 +1,4 @@
-# Estado da implementação — 26/09/2026
+# Estado da implementação — 27/09/2026
 
 Esta revisão está em desenvolvimento. Não confundir a compilação local com a versão publicada na Railway.
 
@@ -16,6 +16,9 @@ Esta revisão está em desenvolvimento. Não confundir a compilação local com 
 - O segundo fator da conta inicial ainda precisa ser cadastrado pelo titular pelo fluxo `/admin`.
 
 ## Código local e testes
+
+- Histórico administrativo com filtros de empresa, responsável, usuário afetado, registro, operação, resultado e período UTC. Paginação de 50 eventos, IDs bigint preservados como texto, detalhes antes/depois e exportação JSON de até 5000 eventos; excesso é recusado, sem truncamento. Consulta exige ADM/AAL2; exportação exige MFA recente e gera auditoria. Resumo dos filtros aplicados e layout responsivo. Consulte `ADMIN-AUDIT.md`.
+- `db/admin-audit.sql` é um novo módulo SQL testado em PostgreSQL local descartável, ainda não registrado/aplicado como migração no Supabase. Testes cobrem filtros combinados, precisão, paginação, limites, privilégios, revogação, MFA e handler HTTP. Revisão visual usa o componente real com API fictícia; não comprova autenticação real. A nova tela cobre o histórico central, sem unificar ainda todos os eventos operacionais dos bancos empresariais.
 
 - Painel ADM com identidade visual vermelha, login separado, matrícula/verificação de MFA, dashboard real, empresas, usuários, vínculos, regras e auditoria paginadas. A troca de contexto remonta a consulta, descartando resultados anteriores.
 - Matriz interativa de permissões com busca paginada de usuários vinculados, rótulos em português, origem da decisão por célula e preparação de regras individuais com versão. A consulta não altera acesso. O salvamento continua exigindo MFA recente e justificativa.
