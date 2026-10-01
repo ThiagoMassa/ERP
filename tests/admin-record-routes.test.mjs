@@ -16,7 +16,9 @@ try{
  assert.equal((await send(body,false)).status,401);
  for(const value of [{...body,company:null},{...body,mode:'command'},{...body,connection:'secret'},{...body,operation:'product.save'},{...body,filters:{export:true}},{...body,filters:{size:5000}}])assert.equal((await send(value)).status,400);
  assert.equal(calls.length,0);
+ for(const filters of [{start:'2026-02-30',end:'2026-03-01'},{start:'2026-10-01',end:'2026-09-01'},{start:'2026-09-01'},{currency:'BRL-invalid'}])assert.equal((await send({...body,filters})).status,400);
  const response=await send(body);assert.equal(response.status,200);assert.equal(response.headers.get('cache-control'),'no-store');assert.deepEqual(calls[0],['Bearer fixture',{company,mode:'read',operation:'products',data:{page:0,size:20}},'admin-read']);
+ await send({...body,filters:{currency:'USD',start:'2026-09-01',end:'2026-09-27'}});assert.equal(calls.at(-1)[1].data.currency,'USD');assert.equal(calls.at(-1)[1].data.start,'2026-09-01');
  failure=new TenantConfigurationError('FORBIDDEN','Acesso administrativo negado.');assert.equal((await send(body)).status,403);
  failure=new Error('secret database host');const unavailable=await send(body);assert.ok(!(await unavailable.text()).includes('secret'));
  console.log('PASS: empresa explícita, whitelist, comandos/exportação/conexão arbitrária recusados e encaminhamento de escopo administrativo somente pelo servidor. Executor simulado.');
