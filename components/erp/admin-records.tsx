@@ -39,6 +39,28 @@ export function AdminRecords({db,company,companyName}:{db:SupabaseClient;company
    {records.length?<div className="op-table-scroll"><table className="op-table"><thead><tr><th>Registro</th><th>Situação / tipo</th><th>Moeda</th><th>Consulta</th></tr></thead><tbody>{records.map((r,i)=><tr key={str(r.id)||[r.product_id,r.warehouse_id,i].join(':')}><td>{str(r.name||r.description||r.partner_name)||'Sem descrição'}<small>{str(r.id||r.product_id)}</small></td><td>{str(r.status||r.kind||r.type)||'—'}</td><td>{str(r.currency)||'—'}</td><td><button className="op-small-button" onClick={()=>setSelected(r)}>Ver campos</button></td></tr>)}</tbody></table></div>:<p>Nenhum registro corresponde aos filtros aplicados.</p>}
    <div className="op-form-footer"><span>{count} registros · página {query.page+1}</span><button className="op-small-button" disabled={!query.page} onClick={()=>change({...query,page:query.page-1})}><ChevronLeft size={16}/>Anterior</button><button className="op-small-button" disabled={(query.page+1)*20>=count} onClick={()=>change({...query,page:query.page+1})}>Próxima<ChevronRight size={16}/></button></div>
   </>}
-  {selected?<aside className="adm-record-detail" aria-label="Campos do registro"><h3>Campos do registro · {companyName||company}</h3><dl>{Object.entries(fields).filter(([key])=>key in selected).map(([key,label])=><div key={key}><dt>{label}</dt><dd>{render(selected[key])}</dd></div>)}</dl><button className="op-small-button" onClick={()=>setSelected(null)}>Fechar campos</button></aside>:null}
+  {selected?<aside className="adm-record-detail" aria-label="Campos do registro"><h3>Campos do registro · {companyName||company}</h3><RecordDetails key={[company,query.operation,selected.id,selected.product_id,selected.warehouse_id].join(':')} db={db} company={company} operation={query.operation} record={selected}/><button className="op-small-button" onClick={()=>setSelected(null)}>Fechar campos</button></aside>:null}
  </section>;
+}
+
+function RecordDetails({db,company,operation,record}:{db:SupabaseClient;company:string;operation:string;record:Row}){
+ const detailOperation=operation==='orders'?'order_detail':operation==='titles'?'title_detail':null;
+ const [detail,setDetail]=useState<Row|null>(null),[error,setError]=useState('');
+ useEffect(()=>{
+  if(!detailOperation)return;const controller=new AbortController();
+  read(db,{company,operation:detailOperation,filters:{id:record.id}},controller.signal).then(result=>{
+   if(controller.signal.aborted)return;
+   if(result.id!==record.id||result.business_id!==company)throw Error('O detalhe retornado não corresponde ao registro selecionado.');
+   setDetail(result);
+  }).catch(e=>{if(!controller.signal.aborted)setError(e instanceof Error?e.message:'Detalhes indisponíveis.')});
+  return()=>controller.abort();
+ },[db,company,detailOperation,record.id]);
+ const value=detailOperation?detail:record;
+ if(error)return <p className="op-error" role="alert">{error}</p>;
+ if(!value)return <p role="status">Carregando itens e operações relacionadas…</p>;
+ const related:Record<string,string>={items:'Itens do pedido',fulfillments:'Entregas e atendimentos',titles:'Títulos vinculados',payments:'Pagamentos e estornos'};
+ const labels:Record<string,string>={id:'Identificador',name:'Nome',price:'Preço unitário',discount:'Desconto',fulfilled:'Atendido',unit:'Unidade',actor_id:'Autor',account_id:'Conta (ID)',warehouse_id:'Depósito (ID)',method:'Forma de pagamento',installment:'Parcela',competence_date:'Competência',product_id:'Produto (ID)',description:'Descrição',quantity:'Quantidade',unit_price:'Preço unitário',unit_cost:'Custo unitário',total:'Total',amount:'Valor',paid:'Liquidado',currency:'Moeda',type:'Natureza',due_date:'Vencimento',date:'Data',paid_at:'Pago em',created_at:'Criado em',created_by:'Autor',reversed_at:'Estornado em',cancelled_at:'Cancelado em',reason:'Justificativa'};
+ return <><dl>{Object.entries(fields).filter(([key])=>key in value).map(([key,label])=><div key={key}><dt>{label}</dt><dd>{render(value[key])}</dd></div>)}</dl>
+  {Object.entries(related).filter(([key])=>key in value).map(([key,title])=>{const records=rows(value[key]);const columns=Object.entries(labels).filter(([field])=>records.some(row=>field in row));return <section key={key} className="adm-related-records"><h4>{title} · {records.length}</h4>{records.length?<div className="op-table-scroll"><table className="op-table"><caption>Empresa selecionada · moeda do documento: {str(value.currency)||'Consultar cada registro'}</caption><thead><tr>{columns.map(([field,label])=><th key={field}>{label}</th>)}</tr></thead><tbody>{records.map((row,i)=><tr key={str(row.id)||i}>{columns.map(([field])=><td key={field}>{render(row[field])}</td>)}</tr>)}</tbody></table></div>:<p>Nenhum registro relacionado.</p>}</section>})}
+ </>;
 }

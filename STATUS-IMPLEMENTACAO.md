@@ -17,6 +17,8 @@ Esta revisão está em desenvolvimento. Não confundir a compilação local com 
 
 ## Código local e testes
 
+- Detalhes de pedidos/títulos carregados por ID na tela administrativa: itens, atendimentos, títulos vinculados e pagamentos/estornos, com identificação de moeda e autores disponíveis. ID obrigatório na API; resposta confere ID/empresa no cliente. Teste do componente real em DOM/rede simulados passou para dados relacionados, resposta atrasada descartada e empresa divergente recusada. Não substitui validação autenticada nem implementa correções.
+
 - Tela **Registros das empresas** conectada à API administrativa, com empresa explícita, tipo, moeda/período, paginação, campos principais e limpeza ao trocar contexto. Datas e códigos de moeda validados; aplicabilidade dos filtros explicada. Componente real revisado no navegador com dados fictícios (páginas, campos, troca/estado vazio); sem erro de console. Não substitui MFA real, detalhes completos nem as correções pendentes.
 
 - Base de consulta administrativa empresarial: `/api/admin/records` exige empresa explícita, limita operações/filtros e solicita contexto ADM/AAL2 separado do vínculo operacional. Apenas leitura, sem comandos/exportação. Usa resolução privada de conexão, verificação de identidade e manutenção existentes. `db/admin-records.sql` ainda não aplicado; autoriza inspeção de empresa suspensa somente quando o banco está pronto. Testes SQL de autorização e handler com executor simulado passaram; integração HTTP autenticada com banco exclusivo, tela, filtros autor/período, detalhes completos, auditoria de conclusão/falha e correções ainda pendentes. O evento atual registra autorização de consulta, não sucesso da leitura empresarial.
