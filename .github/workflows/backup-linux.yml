@@ -1,0 +1,40 @@
+name: Backup and recovery on Linux
+on:
+  push:
+    branches: [codex/erp-operations-admin]
+    paths:
+      - 'deploy/backup-operator.*'
+      - 'package*.json'
+      - 'lib/server/tenant-*.ts'
+      - 'lib/server/operator-connection.ts'
+      - 'scripts/preflight-tenant.mjs'
+      - 'scripts/provision-tenant.mjs'
+      - 'tests/tenant-preflight.test.mjs'
+      - 'tests/tenant-manual-provision.test.mjs'
+      - 'db/tenant/**'
+      - 'db/admin-records.sql'
+      - 'db/admin-corrections.sql'
+      - 'tests/admin-records.test.mjs'
+      - 'tests/tenant-backup.test.mjs'
+      - 'tests/tenant-corrections.test.mjs'
+      - 'tests/linux-backup-runner.mjs'
+      - 'tests/helpers/pg-tools.mjs'
+      - '.github/workflows/backup-linux.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  recovery:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build isolated Linux verification image
+        run: docker build --target verification -f deploy/backup-operator.Dockerfile -t erp-backup-verification .
+      - name: Test real backups and recovery without production access
+        run: docker run --rm --network none erp-backup-verification
+      - name: Build production operator and check CLI
+        run: |
+          docker build --target production -f deploy/backup-operator.Dockerfile -t erp-backup-operator .
+          docker run --rm --network none erp-backup-operator --help
+          docker run --rm --network none --entrypoint node erp-backup-operator --experimental-strip-types scripts/preflight-tenant.mjs --help
