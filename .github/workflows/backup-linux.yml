@@ -6,6 +6,10 @@ on:
       - 'deploy/backup-operator.*'
       - 'package*.json'
       - 'lib/server/tenant-*.ts'
+      - 'lib/server/operator-connection.ts'
+      - 'scripts/preflight-tenant.mjs'
+      - 'scripts/provision-tenant.mjs'
+      - 'tests/tenant-preflight.test.mjs'
       - 'db/tenant/**'
       - 'db/admin-records.sql'
       - 'db/admin-corrections.sql'
@@ -32,3 +36,4 @@ jobs:
         run: |
           docker build --target production -f deploy/backup-operator.Dockerfile -t erp-backup-operator .
           docker run --rm --network none erp-backup-operator --help
+          docker run --rm --network none --entrypoint node erp-backup-operator --experimental-strip-types scripts/preflight-tenant.mjs --help

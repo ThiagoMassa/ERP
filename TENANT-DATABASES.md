@@ -35,6 +35,16 @@ TLS com validação de certificado é obrigatório. Para uma autoridade privada,
 
 ## Provisionamento pelo operador
 
+Execute primeiro no ambiente privado Linux, com `ERP_PROVISIONER_URL` e o certificado configurados:
+
+```sh
+node --experimental-strip-types scripts/preflight-tenant.mjs <UUID-da-empresa>
+```
+
+O relatório consulta catálogos: capacidade de criar bancos/perfis, acesso a outras bases via PUBLIC ou credencial empresarial existente e capacidade do operador de administrar cada base conflitante. Não exibe URL/senha nem altera bancos ou privilégios. Código de saída 2 indica impedimentos conhecidos; 1 indica erro de entrada/conexão; 0 permite tentar o provisionamento, mas **não declara a empresa pronta**. Ainda serão obrigatórios identidade, migrações, isolamento efetivo, conciliação e ativação. A verificação é pontual; os diagnósticos posteriores continuam necessários se os privilégios mudarem.
+
+`scripts/provision-tenant.mjs` executa essa mesma verificação antes da criação de qualquer banco/perfil. Falta de CREATEDB/CREATEROLE orienta o provisionamento manual; CONNECT externo interrompe a execução para revisão com o provedor. O procedimento manual acompanhado integralmente pelo painel ainda está pendente: o relatório não substitui a criação real, migração e conciliação. O comando está incluído na imagem Linux do operador e pode ser executado substituindo o entrypoint por `node`.
+
 1. Obtenha o UUID da empresa já cadastrada no controle central.
 2. Gere uma senha aleatória de 32 bytes ou mais, codificada em base64url. Preserve-a em um gerenciador de segredos. Não coloque a senha na linha de comando ou no Git.
 3. No ambiente privado do operador, configure `ERP_PROVISIONER_URL` e `ERP_TENANT_<UUID SEM HÍFENS, MAIÚSCULO>_URL`. Esta última aponta para o banco `erp_<uuid sem hífens>` usando `erp_app_<uuid sem hífens>`. Para Supavisor, acrescente `.PROJECT_REF` ao usuário. URLs não aceitam parâmetros que alterem TLS. O proprietário sem login será `erp_owner_<uuid sem hífens>`.

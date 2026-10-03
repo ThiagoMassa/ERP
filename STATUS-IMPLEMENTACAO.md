@@ -19,6 +19,8 @@ Esta revisão está em desenvolvimento. Não confundir a compilação local com 
 
 ## Código local e testes
 
+- Verificação prévia do operador (`scripts/preflight-tenant.mjs`) consulta permissões de criação e CONNECT externo, inclusive herdado de PUBLIC, sem modificar catálogos ou revelar conexões. O comando de provisionamento interrompe antes de criar bancos/perfis em infraestrutura incompatível. Falta de privilégios direciona ao procedimento manual, cuja integração completa no painel continua pendente. Testes locais de CLI, TypeScript e lint passaram; o teste PostgreSQL real foi incorporado ao workflow Linux e sua execução deve ser conferida antes da publicação. Nenhum provisionamento de produção foi executado.
+
 - Detalhes de pedidos/títulos carregados por ID na tela administrativa: itens, atendimentos, títulos vinculados e pagamentos/estornos, com identificação de moeda e autores disponíveis. ID obrigatório na API; resposta confere ID/empresa no cliente. Teste do componente real em DOM/rede simulados passou para dados relacionados, resposta atrasada descartada e empresa divergente recusada. Não substitui validação autenticada nem implementa correções.
 
 - Tela **Registros das empresas** conectada à API administrativa, com empresa explícita, tipo, moeda/período, paginação, campos principais e limpeza ao trocar contexto. Datas e códigos de moeda validados; aplicabilidade dos filtros explicada. Componente real revisado no navegador com dados fictícios (páginas, campos, troca/estado vazio); sem erro de console. Não substitui MFA real, detalhes completos nem as correções pendentes.
