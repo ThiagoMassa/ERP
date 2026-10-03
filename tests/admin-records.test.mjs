@@ -40,6 +40,7 @@ try{
  for(const decisions of Object.values(c.permissions)){assert.equal(decisions.read.allowed,true);for(const action of ['create','edit','delete','approve','cancel','reverse','export'])assert.equal(decisions[action].allowed,false)}
  assert.ok(Date.parse(c.expires_at)>Date.now());assert.ok(Date.parse(c.expires_at)<Date.now()+30000);
  const event=(await db`select * from erp_control.audit where correlation_id=${c.correlation}`)[0];assert.equal(event.actor_id,adm);assert.equal(event.company_id,company);assert.equal(event.action,'records.authorize.read');
+ const history=await context('record_history');assert.equal(history.administrative_read,true);assert.equal(history.admin_read_operation,'record_history');assert.ok(history.correlation);
  const correctionKey=randomUUID(),entity=randomUUID(),reason='Correção justificada de metadados do produto';
  const correction=async(operation='admin.product.correct')=>(await db`select public.erp_admin_correction_context(${company},${operation},${entity},${reason},${correctionKey}) as data`)[0].data;
  const edit=await correction();assert.equal(edit.administrative,true);assert.equal(edit.admin_action,'admin.product.correct');assert.equal(edit.permissions.catalog.edit.allowed,true);assert.equal(edit.permissions.finance,undefined);

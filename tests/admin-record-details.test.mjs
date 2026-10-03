@@ -44,6 +44,14 @@ try{
  assert.equal(edits.length,0);assert.match(document.body.textContent,/Confira antes de salvar/);assert.match(document.body.textContent,/Peça original/);assert.match(document.body.textContent,/Peça corrigida/);
  await click('Confirmar correção');assert.match(document.querySelector('[role=alert]').textContent,/Resposta indisponível/);
  await click('Confirmar correção');assert.equal(edits.length,2);assert.equal(edits[0].key,edits[1].key);assert.deepEqual(edits[0].data.patch,{name:'Peça corrigida'});assert.equal(edits[0].data.version,1);assert.match(document.body.textContent,/Dados cadastrais corrigidos/);
+ let historyPending,historySignal;const previousFetch=globalThis.fetch;
+ globalThis.fetch=async(url,init)=>{const value=JSON.parse(init.body);if(value.operation==='record_history'){assert.equal(value.filters.id,a);historySignal=init.signal;return new Promise(resolve=>{historyPending=resolve})}return previousFetch(url,init)};
+ await click('Ver campos');await click('Histórico do registro');
+ const historyData={company:a,entity:a,upper:'2026-10-03T00:00:00Z',next_cursor:null,rows:[{id:'9007199254740999',audit_key:'tenant:00009007199254740999',source:'tenant',occurred_at:'2026-10-02T12:00:00Z',actor_id:b,subject_id:a,action:'admin.product.correct',reason:'Correção registrada no histórico',result:'success',correlation_id:b,before_data:{name:'Nome anterior auditado'},after_data:{name:'Nome posterior auditado'}}]};
+ await act(async()=>historyPending(Response.json({data:historyData})));
+ assert.match(document.body.textContent,/Nome anterior auditado/);assert.match(document.body.textContent,/Nome posterior auditado/);assert.match(document.body.textContent,/9007199254740999/);
+ await click('Atualizar desde o início');const staleHistory=historyPending;
+ await mount(b);assert.equal(historySignal.aborted,true);await act(async()=>staleHistory(Response.json({data:historyData})));assert.ok(!document.body.textContent.includes('Nome anterior auditado'));
  console.log('PASS: componente real consulta detalhes, recusa outra empresa, descarta respostas antigas e revisa correção com antes/depois, versão e mesma chave após falha de rede. DOM e rede simulados.');
 }finally{
  if(root)await act(async()=>root.unmount());globalThis.fetch=originalFetch;hooks.deregister();dom.window.close();for(const [key,descriptor] of saved){if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete globalThis[key]}

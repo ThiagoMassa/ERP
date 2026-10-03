@@ -12,7 +12,7 @@ execFileSync(bin+'/initdb',['-D',directory,'-U','erp_test_admin','--pwfile=/app/
 let started=false;
 try{
  execFileSync(bin+'/pg_ctl',['-D',directory,'-l','/app/work/postgres.log','-o','-h 127.0.0.1 -p 55439','-w','start'],{env,stdio:'ignore'});started=true;
- for(const test of ['tenant-corrections','tenant-backup'])await new Promise((yes,no)=>{
+ for(const test of ['admin-records','tenant-corrections','tenant-backup'])await new Promise((yes,no)=>{
   const child=spawn(process.execPath,['--experimental-strip-types',`tests/${test}.test.mjs`],{env,stdio:'inherit'});
   child.once('error',no);child.once('exit',code=>code===0?yes():no(Error(`${test} failed (${code})`)));
  });

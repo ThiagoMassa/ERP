@@ -66,6 +66,25 @@ try{
  await db.unsafe('drop trigger reject_correction_audit on tenant.audit;drop function tenant.reject_correction_audit()');
  const scoped={...context(),permissions:{catalog:{available:{allowed:true},edit:{allowed:true}}}};
  assert.equal((await call('admin.product.correct',{...data,version:4},rollbackKey,scoped)).version,5);
+ // The administrative history combines ERP and tenant events without rounding bigint IDs.
+ const today=new Date().toISOString().slice(0,10),readCorrelation=randomUUID();
+ const historyContext=()=>({...context(),administrative_read:true,admin_read_operation:'record_history',read_correlation:readCorrelation});
+ const history=async(filters={},ctx=historyContext(),sql=runtime[0])=>call('record_history',{id:product.id,start:today,end:today,...filters},null,ctx,sql,'read');
+ await db`insert into tenant.audit(id,actor_id,company_id,action,entity,subject_id,result) overriding system value select 9007199254740993+n,${adm},${ids[0]},'test.history',${product.id},${author},'success' from generate_series(1,24) n`;
+ await db`insert into public.erp_audit(business_id,actor_id,action,entity_id,detail) select ${ids[0]},${author},'test.history',${product.id},jsonb_build_object('reason','Evento operacional existente') from generate_series(1,2)`;
+ const first=await history({action:'test.history',size:20});assert.equal(first.rows.length,20);assert.ok(first.next_cursor);assert.equal(first.company,ids[0]);assert.equal(first.entity,product.id);
+ assert.equal(typeof first.rows.find(row=>row.source==='tenant').id,'string');assert.ok(first.rows.some(row=>BigInt(row.source==='tenant'?row.id:'0')>9007199254740991n));
+ await db`insert into tenant.audit(actor_id,company_id,action,entity,result) values(${adm},${ids[0]},'test.history',${product.id},'success')`;
+ const second=await history({action:'test.history',size:20,upper:first.upper,cursor:first.next_cursor});assert.equal(second.rows.length,6);assert.equal(second.next_cursor,null);assert.equal(new Set([...first.rows,...second.rows].map(row=>row.audit_key)).size,26);
+ const authorHistory=await history({actor:author,action:'test.history'});assert.equal(authorHistory.rows.length,2);assert.ok(authorHistory.rows.every(row=>row.source==='erp'&&row.before_data===null&&row.after_data===null));
+ const subjectHistory=await history({subject:author,action:'test.history',size:50});assert.equal(subjectHistory.rows.length,24);
+ const corrections=await history({action:'admin.product.correct'});assert.equal(corrections.rows.length,3);assert.ok(corrections.rows.every(row=>row.subject_id===author&&row.actor_id===adm&&row.reason===data.reason&&row.before_data&&row.after_data));
+ assert.equal((await db`select count(*)::int n from tenant.audit where action='record.history' and correlation_id=${readCorrelation}`)[0].n,5);
+ await assert.rejects(history({},context()),e=>e.code==='42501');
+ await assert.rejects(history({}, {...historyContext(),admin_read_operation:'products'}),e=>e.code==='42501');
+ await assert.rejects(history({size:51}));await assert.rejects(history({end:'2030-01-01'}));
+ await assert.rejects(history({}, {...historyContext(),company:ids[1]}),e=>e.code==='42501');
+ assert.equal((await history({}, {...historyContext(),company:ids[1]},runtime[1])).rows.length,0);
  for(const statement of ['select * from tenant.admin_requests',"update public.products set name='forged'","delete from tenant.audit","select tenant.dispatch_before_corrections('{}','read','products','{}',null)"])await assert.rejects(runtime[0].unsafe(statement),e=>e.code==='42501');
  await db`update tenant.identity set operational_state='maintenance'`;
  await assert.rejects(call('admin.product.correct',data,key),e=>e.code==='55000');

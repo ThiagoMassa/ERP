@@ -21,6 +21,9 @@ try{
  const response=await send(body);assert.equal(response.status,200);assert.equal(response.headers.get('cache-control'),'no-store');assert.deepEqual(calls[0],['Bearer fixture',{company,mode:'read',operation:'products',data:{page:0,size:20}},'admin-read']);
  await send({...body,filters:{currency:'USD',start:'2026-09-01',end:'2026-09-27'}});assert.equal(calls.at(-1)[1].data.currency,'USD');assert.equal(calls.at(-1)[1].data.start,'2026-09-01');
  await send({company,operation:'order_detail',filters:{id:company}});assert.equal(calls.at(-1)[1].operation,'order_detail');assert.equal(calls.at(-1)[1].data.id,company);
+ const history={company,operation:'record_history',filters:{id:company,start:'2026-10-01',end:'2026-10-03'}};
+ assert.equal((await send(history)).status,200);assert.equal(calls.at(-1)[1].operation,'record_history');assert.equal(calls.at(-1)[2],'admin-read');
+ for(const filters of [{...history.filters,id:undefined},{...history.filters,end:'2030-01-01'},{...history.filters,actor:'invalid'},{...history.filters,size:51},{...history.filters,cursor:{at:'2026-10-01T00:00:00Z',key:'bad'}}])assert.equal((await send({...history,filters})).status,400);
  failure=new TenantConfigurationError('FORBIDDEN','Acesso administrativo negado.');assert.equal((await send(body)).status,403);
  failure=new Error('secret database host');const unavailable=await send(body);assert.ok(!(await unavailable.text()).includes('secret'));
  failure=null;

@@ -8,11 +8,17 @@
 !db/
 !db/tenant/
 !db/tenant/*.sql
+!db/admin-control.sql
+!db/tenant-routing.sql
+!db/tenant-backup-control.sql
+!db/admin-records.sql
+!db/admin-corrections.sql
 !scripts/
 !scripts/run-maintenance.mjs
 !tests/
 !tests/tenant-backup.test.mjs
 !tests/tenant-corrections.test.mjs
+!tests/admin-records.test.mjs
 !tests/linux-backup-runner.mjs
 !tests/helpers/
 !tests/helpers/pg-tools.mjs

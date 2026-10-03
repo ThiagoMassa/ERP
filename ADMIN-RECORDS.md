@@ -1,5 +1,15 @@
 # Consulta administrativa de registros — base em desenvolvimento
 
+## Histórico empresarial integrado — 03/10/2026
+
+**Ver campos → Histórico do registro** consulta os eventos do UUID selecionado no banco exclusivo. Reúne `erp_audit` e `tenant.audit`, identifica a origem, mostra autor, usuário afetado, motivo, resultado, correlação e valores anteriores/posteriores quando disponíveis. Não inventa o estado anterior de eventos antigos. Filtros: intervalo UTC de até 366 dias, autor, usuário afetado e ação exata. Eventos sem usuário afetado registrado não aparecem ao usar esse filtro.
+
+A migração incremental empresarial `008-record-history.sql` restringe a consulta ao contexto administrativo de leitura e registra sua conclusão em `tenant.audit`, com a correlação central. O evento central continua registrando a autorização; não há transação distribuída nem registro central garantido de falhas posteriores. A API comum recusa a operação e não encaminha o marcador administrativo. Nenhum comando de edição/exclusão da auditoria é exposto.
+
+Paginação por data/chave, com limite temporal superior devolvido na primeira página e IDs bigint serializados como texto. Evita deslocamento por novos eventos posteriores ao limite; não é um snapshot MVCC mantido entre requisições. A tela permite consultar eventos mais antigos ou atualizar desde o início; trocar empresa/registro cancela a consulta. A exportação unificada empresarial e a consulta global sem registro selecionado ainda estão pendentes. A exportação da auditoria central permanece separada.
+
+Os módulos centrais de registros/correções continuam não instalados em produção. A publicação desta consulta exige a definição atual de `admin-records.sql`, a migração empresarial 008 e o servidor/frontend correspondentes.
+
 ## Correção cadastral de produtos — 01/10/2026
 
 Na consulta de produtos, **Ver campos → Corrigir dados cadastrais** permite revisar nome, descrição, categoria, SKU, fornecedor descritivo e localização descritiva. A tela mostra antes/depois e justificativa antes da confirmação, mantém o nome da empresa e oferece reautenticação. Não altera valores, estoque, documentos, tipo/unidade nem autoria original.

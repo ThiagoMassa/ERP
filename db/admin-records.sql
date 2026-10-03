@@ -5,7 +5,7 @@ language plpgsql security definer set search_path='' as $$
 declare actor uuid;c erp_control.companies;permissions jsonb:='{}';actions jsonb;m text;a text;correlation uuid:=gen_random_uuid();
 begin
  actor:=erp_control.require_admin(false);
- if b is null or operation is null or operation not in ('products','partners','orders','order_detail','titles','title_detail','stock','movements','jobs','spools','printers','recipes') then raise exception 'Selecione empresa e consulta administrativa válidas.' using errcode='42501';end if;
+ if b is null or operation is null or operation not in ('products','partners','orders','order_detail','titles','title_detail','stock','movements','jobs','spools','printers','recipes','record_history') then raise exception 'Selecione empresa e consulta administrativa válidas.' using errcode='42501';end if;
  select * into c from erp_control.companies where id=b;
  if c.id is null or c.provisioning<>'ready' then raise exception 'Banco indisponível para consulta administrativa.' using errcode='42501';end if;
  -- A suspended company remains inspectable by ADM. A database in maintenance does not.
@@ -16,7 +16,7 @@ begin
  end loop;
  insert into erp_control.audit(actor_id,company_id,action,entity,after_data,result,correlation_id)
  values(actor,b,'records.authorize.read',operation,jsonb_build_object('operation',operation),'success',correlation);
- return jsonb_build_object('actor',actor,'company',b,'expires_at',clock_timestamp()+interval '25 seconds','permissions',permissions,
+ return jsonb_build_object('actor',actor,'company',b,'expires_at',clock_timestamp()+interval '25 seconds','permissions',permissions,'administrative_read',true,'admin_read_operation',operation,
  'provisioning',c.provisioning,'database_identity',c.database_identity,'credential_ref',c.credential_ref,'schema_version',c.schema_version,'access_epoch',c.access_epoch,'correlation',correlation);
 end $$;
 create function public.erp_admin_record_context(p_company uuid,p_operation text) returns jsonb

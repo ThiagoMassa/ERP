@@ -30,6 +30,11 @@ try{
  context={...context,administrative:true,actor:company};await assert.rejects(executeTenantRequest('Bearer fixture',request,'admin-correct'),e=>e.code==='FORBIDDEN');assert.equal(dispatched.length,1);
  context={...context,actor};authError={message:'invalid'};await assert.rejects(executeTenantRequest('Bearer fixture',request,'admin-correct'),e=>e.code==='UNAUTHENTICATED');authError=null;
  await executeTenantRequest('Bearer fixture',{company,mode:'read',operation:'products',data:{}},'admin-read');assert.equal(dispatched.at(-1)[0].administrative,undefined);assert.equal(dispatched.at(-1)[0].admin_action,undefined);
+ const history={company,mode:'read',operation:'record_history',data:{id:company,start:'2026-10-01',end:'2026-10-03'}};
+ await assert.rejects(executeTenantRequest('Bearer fixture',history),e=>e.code==='FORBIDDEN');
+ await assert.rejects(executeTenantRequest('Bearer fixture',history,'admin-read'),e=>e.code==='FORBIDDEN');
+ context={...context,administrative_read:true,admin_read_operation:'record_history',correlation:actor};
+ await executeTenantRequest('Bearer fixture',history,'admin-read');assert.equal(dispatched.at(-1)[0].administrative_read,true);assert.equal(dispatched.at(-1)[0].read_correlation,actor);assert.equal(dispatched.at(-1)[0].administrative,undefined);
  console.log('PASS: correção só pelo escopo do servidor, esquema validado antes da autorização, contexto central restrito e conferido, ator divergente/sessão inválida negados; leitura nunca encaminha autoridade de escrita. Dependências simuladas.');
 }finally{
  hooks.deregister();delete globalThis.correctionControl;delete globalThis.correctionSql;
