@@ -30,6 +30,8 @@ A imagem define os caminhos de `pg_dump`, `pg_restore`, `psql` e `/backups`. Nã
 
 O workflow `Backup and recovery on Linux` constrói uma imagem de verificação e executa testes com dois bancos descartáveis dentro do contêiner, com rede externa desativada. Não recebe segredos nem acessa produção. Isso transfere a validação nativa para Linux; não é backup dos dados reais. O bloqueio de `libpq.dll` voltou a ocorrer no Windows em 01/10/2026; não é necessário instalar novamente os utilitários nem alterar as proteções locais.
 
+Em 03/10/2026, a [execução Linux 37133638118](https://github.com/ThiagoMassa/ERP/actions/runs/37133638118), no commit `84938456afd32d9f55a89ab71e59a232ff2e3049`, construiu as imagens e passou os testes nativos: dump criptografado, recuperação e comparação de tabelas/rotinas, restauração sobre banco existente, cópia anterior, rollback após DROP SCHEMA, idempotência, PNG/3MF byte a byte e isolamento da outra empresa. A imagem de produção executou `--help` com sucesso. Não houve conexão ou backup de produção.
+
 Aplique o controle central depois de `admin-control.sql` e `tenant-routing.sql`. Os bancos empresariais precisam de todo o pacote atual listado em `tenantMigrations()`; atualize o roteador em conjunto. O corte e a conciliação devem estar concluídos antes de o banco ser marcado como pronto. Não altere esse estado manualmente para habilitar botões.
 
 Execute `scripts/run-maintenance.mjs` em um ambiente privado separado do serviço web. Configure os seguintes valores pelo gerenciador de segredos, sem incluí-los em argumentos do processo, Git ou logs:
