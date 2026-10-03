@@ -34,7 +34,17 @@ try{
  assert.match(document.body.textContent,/Pagamentos e estornos · 1/);assert.match(document.body.textContent,/Estorno de teste/);
  await click('Fechar campos');await click('Ver campos');await act(async()=>{pending(Response.json({data:{id:a,business_id:b,payments:[{amount:999}]}}))});
  assert.match(document.querySelector('[role=alert]').textContent,/não corresponde/);assert.ok(!document.body.textContent.includes('999'));
- console.log('PASS: componente real consulta detalhes, mostra itens, cancela resposta antiga ao trocar empresa e recusa detalhe de outra empresa. DOM e rede simulados.');
+ await act(async()=>root.render(null));
+ const edits=[];let failOnce=true;
+ globalThis.fetch=async(_url,init)=>{const body=JSON.parse(init.body);if(init.method==='PATCH'){edits.push(body);if(failOnce){failOnce=false;return Response.json({error:'Resposta indisponível; repita a revisão.'},{status:503})}return Response.json({data:{id:a,version:2,correlation:body.key}})}return Response.json({data:{rows:[{id:a,business_id:a,name:'Peça original',category:'Peças',cost:10,price:20,record_version:1}],count:1}})};
+ await mount(a);await click('Ver campos');await click('Corrigir dados cadastrais');
+ const correctionForm=document.querySelector('[aria-label="Correção de produto"] form');
+ correctionForm.querySelector('[name=name]').value='Peça corrigida';correctionForm.querySelector('[name=reason]').value='Correção do nome cadastrado pelo operador';
+ await act(async()=>correctionForm.dispatchEvent(new dom.window.Event('submit',{bubbles:true,cancelable:true})));
+ assert.equal(edits.length,0);assert.match(document.body.textContent,/Confira antes de salvar/);assert.match(document.body.textContent,/Peça original/);assert.match(document.body.textContent,/Peça corrigida/);
+ await click('Confirmar correção');assert.match(document.querySelector('[role=alert]').textContent,/Resposta indisponível/);
+ await click('Confirmar correção');assert.equal(edits.length,2);assert.equal(edits[0].key,edits[1].key);assert.deepEqual(edits[0].data.patch,{name:'Peça corrigida'});assert.equal(edits[0].data.version,1);assert.match(document.body.textContent,/Dados cadastrais corrigidos/);
+ console.log('PASS: componente real consulta detalhes, recusa outra empresa, descarta respostas antigas e revisa correção com antes/depois, versão e mesma chave após falha de rede. DOM e rede simulados.');
 }finally{
  if(root)await act(async()=>root.unmount());globalThis.fetch=originalFetch;hooks.deregister();dom.window.close();for(const [key,descriptor] of saved){if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete globalThis[key]}
 }

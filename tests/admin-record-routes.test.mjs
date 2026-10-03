@@ -10,7 +10,7 @@ const hooks=registerHooks({resolve(specifier,context,next){
 try{
  const calls=[];let failure=null;
  globalThis.recordExecutor=async(...args)=>{calls.push(args);if(failure)throw failure;return {rows:[],count:0}};
- const {POST}=await import('../app/api/admin/records/route.ts');
+ const {POST,PATCH}=await import('../app/api/admin/records/route.ts');
  const company='11111111-1111-4111-8111-111111111111',body={company,operation:'products',filters:{page:0,size:20}};
  const send=(value,auth=true)=>POST(new Request('http://localhost/api/admin/records',{method:'POST',headers:auth?{authorization:'Bearer fixture'}:{},body:JSON.stringify(value)}));
  assert.equal((await send(body,false)).status,401);
@@ -23,5 +23,14 @@ try{
  await send({company,operation:'order_detail',filters:{id:company}});assert.equal(calls.at(-1)[1].operation,'order_detail');assert.equal(calls.at(-1)[1].data.id,company);
  failure=new TenantConfigurationError('FORBIDDEN','Acesso administrativo negado.');assert.equal((await send(body)).status,403);
  failure=new Error('secret database host');const unavailable=await send(body);assert.ok(!(await unavailable.text()).includes('secret'));
+ failure=null;
+ const correction={company,operation:'admin.product.correct',key:company,data:{id:company,version:1,reason:'Correção de descrição incorreta',patch:{name:'Peça revisada'}}};
+ const patch=(value,auth=true)=>PATCH(new Request('http://localhost/api/admin/records',{method:'PATCH',headers:auth?{authorization:'Bearer fixture'}:{},body:JSON.stringify(value)}));
+ assert.equal((await patch(correction,false)).status,401);
+ for(const value of [{...correction,company:null},{...correction,scope:'admin-correct'},{...correction,operation:'product.save'},{...correction,data:{...correction.data,version:0}},{...correction,data:{...correction.data,patch:{cost:1}}},{...correction,data:{...correction.data,patch:{owner_id:company}}},{...correction,data:{...correction.data,reason:'short'}}])assert.equal((await patch(value)).status,400);
+ assert.equal((await patch(correction)).status,200);assert.deepEqual(calls.at(-1),['Bearer fixture',{company,mode:'command',operation:correction.operation,data:correction.data,key:company},'admin-correct']);
+ failure=new TenantConfigurationError('CONFLICT','Atualize o registro.');assert.equal((await patch(correction)).status,409);
+ failure=new TenantConfigurationError('FORBIDDEN','Confirme a identidade.');assert.equal((await patch(correction)).status,403);
+ failure=new Error('secret postgres credentials');assert.ok(!(await (await patch(correction)).text()).includes('secret'));
  console.log('PASS: empresa explícita, whitelist, comandos/exportação/conexão arbitrária recusados e encaminhamento de escopo administrativo somente pelo servidor. Executor simulado.');
 }finally{hooks.deregister();delete globalThis.recordExecutor}

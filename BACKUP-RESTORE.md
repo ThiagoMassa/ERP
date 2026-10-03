@@ -20,7 +20,17 @@ A autoria original dos registros é preservada. O evento de restauração identi
 
 ## Instalação e configuração do operador
 
-Aplique o controle central depois de `admin-control.sql` e `tenant-routing.sql`. Os bancos empresariais precisam do pacote atual de migrações até `005-access-epoch`; atualize o roteador em conjunto. O corte e a conciliação devem estar concluídos antes de o banco ser marcado como pronto. Não altere esse estado manualmente para habilitar botões.
+### Execução no servidor Linux, sem instalar pg_dump no computador
+
+O computador do usuário precisa apenas acessar o painel. `deploy/backup-operator.Dockerfile` empacota Node e as ferramentas oficiais PostgreSQL 17 para executar o operador no servidor Linux. A imagem inicia somente o comando de manutenção, não inicia um servidor PostgreSQL e não precisa de domínio nem porta pública. As imagens-base oficiais são [Node](https://hub.docker.com/_/node) e [PostgreSQL](https://hub.docker.com/_/postgres).
+
+No ambiente Linux do operador, construa com `docker build --target production -f deploy/backup-operator.Dockerfile -t erp-backup-operator .`. Monte um volume persistente em `/backups`, gravável pelo usuário `postgres` da imagem, e forneça as variáveis privadas abaixo pelo gerenciador de segredos da hospedagem. Inicie a imagem passando o UUID de uma solicitação já autorizada no painel. Sem UUID, ela mostra ajuda e encerra. É um processo de execução única; não configure reinício infinito nem trate isso como agendamento já implementado. Em Railway, use um serviço separado do frontend com este Dockerfile e volume privado; a configuração e ativação desse serviço ainda estão pendentes.
+
+A imagem define os caminhos de `pg_dump`, `pg_restore`, `psql` e `/backups`. Não coloque credenciais no Dockerfile, argumentos de build ou repositório. O arquivo de exclusões do Dockerfile limita o contexto a código, dependências e migrações. A chave de criptografia e a cópia independente dos artefatos continuam necessárias.
+
+O workflow `Backup and recovery on Linux` constrói uma imagem de verificação e executa testes com dois bancos descartáveis dentro do contêiner, com rede externa desativada. Não recebe segredos nem acessa produção. Isso transfere a validação nativa para Linux; não é backup dos dados reais. O bloqueio de `libpq.dll` voltou a ocorrer no Windows em 01/10/2026; não é necessário instalar novamente os utilitários nem alterar as proteções locais.
+
+Aplique o controle central depois de `admin-control.sql` e `tenant-routing.sql`. Os bancos empresariais precisam de todo o pacote atual listado em `tenantMigrations()`; atualize o roteador em conjunto. O corte e a conciliação devem estar concluídos antes de o banco ser marcado como pronto. Não altere esse estado manualmente para habilitar botões.
 
 Execute `scripts/run-maintenance.mjs` em um ambiente privado separado do serviço web. Configure os seguintes valores pelo gerenciador de segredos, sem incluí-los em argumentos do processo, Git ou logs:
 

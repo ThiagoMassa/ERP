@@ -1,5 +1,15 @@
 # Consulta administrativa de registros — base em desenvolvimento
 
+## Correção cadastral de produtos — 01/10/2026
+
+Na consulta de produtos, **Ver campos → Corrigir dados cadastrais** permite revisar nome, descrição, categoria, SKU, fornecedor descritivo e localização descritiva. A tela mostra antes/depois e justificativa antes da confirmação, mantém o nome da empresa e oferece reautenticação. Não altera valores, estoque, documentos, tipo/unidade nem autoria original.
+
+`PATCH /api/admin/records` aceita somente esse comando, campos permitidos, versão e UUID de repetição. O servidor valida a sessão e solicita `erp_admin_correction_context`, que exige ADM ativo com MFA confirmado nos últimos cinco minutos. O endpoint comum não pode escolher o escopo administrativo. Ausência de migração, banco não pronto, identidade ou geração de acesso divergente bloqueiam a operação.
+
+`007-admin-corrections.sql` adiciona versão de produto incrementada também pelas edições comuns, trava de registro, cache de repetição autorizado e transação única para cadastro e auditoria. Conflitos respondem 409. A repetição revalida a autorização antes de consultar o resultado anterior. A auditoria empresarial preserva antes/depois, justificativa, ADM real, autor original e correlação. O evento central `records.authorize.correct` registra a autorização, não comprova a conclusão da gravação; a auditoria final permanece no banco empresarial.
+
+Instalação pendente: registrar/aplicar `db/admin-corrections.sql` no controle central, instalar a migração 007 em cada banco e publicar o servidor/frontend juntos. Nada foi aplicado em produção. A validação local cobre SQL central com identidades/MFA de teste, duas bases empresariais reais, concorrência, rollback de falha na auditoria, idempotência, autoria e preservação de valores. Handler e componente usam rede simulada. Ainda falta o ensaio completo com sessão real e consulta integrada da auditoria empresarial.
+
 `POST /api/admin/records` recebe empresa UUID, operação permitida e filtros restritos. Não recebe conexão, credencial, contexto de autorização, comandos ou opção de exportação. O executor usa a sessão validada para solicitar `erp_admin_record_context`, que exige ADM ativo/AAL2 e banco pronto. A ausência de vínculo empresarial não impede uma inspeção explicitamente administrativa. Empresa suspensa continua inspecionável; banco em preparação/manutenção permanece indisponível.
 
 A conexão é resolvida no servidor pelo identificador da empresa e passa pela mesma validação de identidade, migrações, privilégios restritos e geração de acesso usada no ERP. O contexto dura 25 segundos e concede apenas leitura. O endpoint comum não permite selecionar esse escopo. A função central registra `records.authorize.read`, com ator, empresa, tipo de consulta e correlação; esse evento comprova autorização, não a conclusão da leitura no banco empresarial.
