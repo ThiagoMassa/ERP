@@ -10,6 +10,8 @@ Paginação por data/chave, com limite temporal superior devolvido na primeira p
 
 Os módulos centrais de registros/correções continuam não instalados em produção. A publicação desta consulta exige a definição atual de `admin-records.sql`, a migração empresarial 008 e o servidor/frontend correspondentes.
 
+Verificação: [Linux 37134926607](https://github.com/ThiagoMassa/ERP/actions/runs/37134926607), commit `7427e1369a118866d793d31c42d05a21c334548c`, aprovado. Os testes exercitam duas fontes de auditoria, ID bigint acima da precisão JavaScript, páginas 20+6 sem duplicação, evento posterior fora do limite temporal, filtros por autor/usuário afetado/ação, contexto comum recusado, outra empresa sem acesso e registro auditado da consulta. SQL central e backup/restauração também passaram. Testes da API/executor e do componente em DOM simulado cobrem encaminhamento restrito, antes/depois e cancelamento de resposta após troca de empresa. Falta sessão real ponta a ponta.
+
 ## Correção cadastral de produtos — 01/10/2026
 
 Na consulta de produtos, **Ver campos → Corrigir dados cadastrais** permite revisar nome, descrição, categoria, SKU, fornecedor descritivo e localização descritiva. A tela mostra antes/depois e justificativa antes da confirmação, mantém o nome da empresa e oferece reautenticação. Não altera valores, estoque, documentos, tipo/unidade nem autoria original.
