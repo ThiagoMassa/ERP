@@ -30,9 +30,9 @@ export async function tenantPreflight(sql: Sql, companyId: string) {
   };
 }
 
-export function assertProvisionPreflight(report: Awaited<ReturnType<typeof tenantPreflight>>) {
+export function assertProvisionPreflight(report: Awaited<ReturnType<typeof tenantPreflight>>, existingOnly = false) {
   if (report.connection_conflicts.length) throw new TenantConfigurationError('UNSAFE_CLUSTER',
     'O servidor permite conexão a outras bases. Execute a verificação prévia e revise o isolamento com o provedor; nenhum banco ou perfil foi criado.');
-  if (!report.can_attempt_automatic_provisioning) throw new TenantConfigurationError('MANUAL_PROVISIONING_REQUIRED',
+  if (!existingOnly && !report.can_attempt_automatic_provisioning) throw new TenantConfigurationError('MANUAL_PROVISIONING_REQUIRED',
     'O operador não pode criar bancos/perfis. Solicite o provisionamento manual ao responsável pelo servidor; nenhuma empresa foi ativada.');
 }

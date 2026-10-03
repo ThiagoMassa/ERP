@@ -10,6 +10,7 @@ on:
       - 'scripts/preflight-tenant.mjs'
       - 'scripts/provision-tenant.mjs'
       - 'tests/tenant-preflight.test.mjs'
+      - 'tests/tenant-manual-provision.test.mjs'
       - 'db/tenant/**'
       - 'db/admin-records.sql'
       - 'db/admin-corrections.sql'

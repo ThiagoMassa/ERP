@@ -31,6 +31,7 @@ COPY --from=dependencies /build/node_modules ./node_modules
 COPY lib/server/asset-content.ts ./lib/server/
 COPY tests/tenant-backup.test.mjs tests/tenant-corrections.test.mjs tests/admin-records.test.mjs tests/linux-backup-runner.mjs ./tests/
 COPY tests/tenant-preflight.test.mjs ./tests/
+COPY tests/tenant-manual-provision.test.mjs ./tests/
 COPY db/admin-control.sql db/tenant-routing.sql db/tenant-backup-control.sql db/admin-records.sql db/admin-corrections.sql ./db/
 COPY tests/helpers/pg-tools.mjs ./tests/helpers/
 ENTRYPOINT ["node", "--experimental-strip-types", "tests/linux-backup-runner.mjs"]

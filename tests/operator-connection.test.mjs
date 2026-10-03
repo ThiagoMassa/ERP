@@ -6,7 +6,7 @@ for(const value of [undefined,'not-a-url','https://name:secret@example.invalid/p
 const options=operatorConnection('postgres://operator:encoded%21@example.invalid:5433/postgres','trusted-ca');
 assert.equal(options.ssl.rejectUnauthorized,true);assert.equal(options.ssl.ca,'trusted-ca');assert.equal(options.password,'encoded!');assert.equal(options.port,5433);
 const ipv6=operatorConnection('postgres://operator:secret@[::1]/postgres');assert.equal(ipv6.host,'::1');assert.equal(ipv6.ssl.rejectUnauthorized,true);
-for(const script of ['prepare-legacy-photos','cutover-tenant','preflight-tenant']){
+for(const script of ['prepare-legacy-photos','cutover-tenant','preflight-tenant','provision-tenant']){
  const env={...process.env,ERP_CONTROL_OPERATOR_URL:'postgres://secret:never-print-me@example.invalid/postgres'};
  for(const args of [['--help'],['invalid-uuid']]){
   const result=spawnSync(process.execPath,['--experimental-strip-types',`scripts/${script}.mjs`,...args],{env,encoding:'utf8',windowsHide:true,timeout:10000});

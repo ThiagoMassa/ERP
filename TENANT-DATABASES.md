@@ -43,7 +43,26 @@ node --experimental-strip-types scripts/preflight-tenant.mjs <UUID-da-empresa>
 
 O relatório consulta catálogos: capacidade de criar bancos/perfis, acesso a outras bases via PUBLIC ou credencial empresarial existente e capacidade do operador de administrar cada base conflitante. Não exibe URL/senha nem altera bancos ou privilégios. Código de saída 2 indica impedimentos conhecidos; 1 indica erro de entrada/conexão; 0 permite tentar o provisionamento, mas **não declara a empresa pronta**. Ainda serão obrigatórios identidade, migrações, isolamento efetivo, conciliação e ativação. A verificação é pontual; os diagnósticos posteriores continuam necessários se os privilégios mudarem.
 
-`scripts/provision-tenant.mjs` executa essa mesma verificação antes da criação de qualquer banco/perfil. Falta de CREATEDB/CREATEROLE orienta o provisionamento manual; CONNECT externo interrompe a execução para revisão com o provedor. O procedimento manual acompanhado integralmente pelo painel ainda está pendente: o relatório não substitui a criação real, migração e conciliação. O comando está incluído na imagem Linux do operador e pode ser executado substituindo o entrypoint por `node`.
+`scripts/provision-tenant.mjs` executa essa mesma verificação antes da criação de qualquer banco/perfil. Falta de CREATEDB/CREATEROLE orienta o provisionamento manual; CONNECT externo interrompe a execução para revisão com o provedor. O comando está incluído na imagem Linux do operador e pode ser executado substituindo o entrypoint por `node`.
+
+### Infraestrutura criada manualmente
+
+Em **Empresas → Registrar etapa**, confira nome/UUID, registre a preparação ou o impedimento com justificativa e confirmação recente de identidade. As notas são auditadas e não declaram que um banco existe. O responsável pelo servidor precisa criar recursos reais com os nomes derivados do UUID descritos acima:
+
+1. Proprietário NOLOGIN, sem SUPERUSER, CREATEDB, CREATEROLE, REPLICATION ou BYPASSRLS.
+2. Credencial LOGIN/NOINHERIT exclusiva, sem os privilégios elevados acima e sem associação a outros papéis. Configure a senha aleatória no armazenamento privado, nunca na anotação do painel.
+3. Banco vazio UTF-8 criado a partir de template0, pertencente ao proprietário esperado. Retire todos os privilégios de PUBLIC nesse banco; conceda somente CONNECT à credencial empresarial, sem CREATE/TEMP. Resolva também o CONNECT a outras bases com o provedor.
+4. Operador de migração com conexão ao banco e capacidade de SET ROLE para esse proprietário. Esse operador não precisa de CREATEDB/CREATEROLE e não é a credencial usada pelo ERP.
+
+No ambiente privado Linux, configure `ERP_PROVISIONER_URL` e `ERP_TENANT_<UUID compacto maiúsculo>_URL`; execute:
+
+```sh
+node --experimental-strip-types scripts/provision-tenant.mjs <UUID-da-empresa> --existing
+```
+
+O modo `--existing` não cria bancos/perfis, não troca senhas e não corrige os privilégios do banco silenciosamente. Recusa recursos ausentes, proprietário incorreto, privilégios inseguros e banco ocupado sem identidade reconhecida. Usa trava de provisionamento e a mesma transação de migrações/checksums; falhas revertem a instalação, e a repetição preserva o que já foi instalado. A identidade e o isolamento são conferidos novamente com a credencial empresarial. O resultado permanece aguardando conciliação: nenhuma anotação ou retorno deste comando ativa a empresa.
+
+Registre a etapa no painel e abra **Verificar banco**. Siga o fluxo existente de preparação/corte, conciliação e ativação pelo servidor. A execução com sessão real e infraestrutura de produção permanece pendente; o modo manual não contorna a restrição CONNECT encontrada no Supabase atual.
 
 1. Obtenha o UUID da empresa já cadastrada no controle central.
 2. Gere uma senha aleatória de 32 bytes ou mais, codificada em base64url. Preserve-a em um gerenciador de segredos. Não coloque a senha na linha de comando ou no Git.

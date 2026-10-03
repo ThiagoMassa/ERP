@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tenantConnectionOptions, tenantIdentity, TenantConfigurationError } from './tenant-identity.ts';
+import {tenantPreflight, assertProvisionPreflight} from './tenant-preflight.ts';
 
 export type TenantHealth = {
   company_id: string; database: string; runtime_role: string; session_role: string;
@@ -54,6 +55,8 @@ export function assertTenantReady(health: TenantHealth, required: Migration[]) {
 }
 
 type ProvisionOptions = {
+  /** Manual infrastructure: never create/alter database roles or database ACLs. */
+  existingOnly?: boolean;
   companyId: string;
   runtimePassword: string;
   /** Maintenance credentials are never used by request handlers. */
@@ -65,6 +68,7 @@ type ProvisionOptions = {
 /** Repeatable infrastructure provisioning. Never adopts another owner's database. */
 export async function provisionTenant(options: ProvisionOptions) {
   const identity = tenantIdentity(options.companyId);
+  if (options.existingOnly) assertProvisionPreflight(await tenantPreflight(options.maintenance, options.companyId), true);
   if (!/^[A-Za-z0-9_-]{43,128}$/.test(options.runtimePassword)) {
     throw new TenantConfigurationError('WEAK_SECRET', 'Use uma credencial aleatória de pelo menos 32 bytes.');
   }
@@ -80,6 +84,7 @@ export async function provisionTenant(options: ProvisionOptions) {
     const creator = (await maintenance<{name: string}[]>`select current_user as name`)[0].name;
     const owner = await maintenance`select rolsuper,rolcanlogin,rolcreatedb,rolcreaterole,rolreplication,rolbypassrls from pg_roles where rolname=${identity.owner}`;
     if (!owner.length) {
+      if (options.existingOnly) throw new TenantConfigurationError('MANUAL_SETUP_MISSING', 'O proprietário esperado ainda não foi criado pelo responsável do servidor.');
       await maintenance.unsafe(`create role ${quoteIdentifier(identity.owner)} nologin nosuperuser nocreatedb nocreaterole noreplication nobypassrls noinherit`);
       // PostgreSQL 16+ requires SET OPTION for a non-superuser creator to SET ROLE.
       await maintenance.unsafe(`grant ${quoteIdentifier(identity.owner)} to ${quoteIdentifier(creator)} with set true`);
@@ -88,6 +93,7 @@ export async function provisionTenant(options: ProvisionOptions) {
     }
     const role = await maintenance`select rolsuper,rolcreatedb,rolcreaterole,rolreplication,rolbypassrls,rolinherit,rolcanlogin from pg_roles where rolname=${identity.runtime}`;
     if (!role.length) {
+      if (options.existingOnly) throw new TenantConfigurationError('MANUAL_SETUP_MISSING', 'A credencial empresarial esperada ainda não foi criada pelo responsável do servidor.');
       // Password was restricted to an injection-safe generated alphabet above.
       await maintenance.unsafe(`create role ${quoteIdentifier(identity.runtime)} login nosuperuser nocreatedb nocreaterole noreplication nobypassrls noinherit connection limit 4 password '${options.runtimePassword}'`);
     } else if (role[0].rolsuper || role[0].rolcreatedb || role[0].rolcreaterole || role[0].rolreplication || role[0].rolbypassrls || role[0].rolinherit || !role[0].rolcanlogin) {
@@ -101,10 +107,23 @@ export async function provisionTenant(options: ProvisionOptions) {
       throw new TenantConfigurationError('DATABASE_CONFLICT', 'Nome reservado já pertence a outro banco. Nenhum dado foi alterado.');
     }
     if (!existing.length) {
+      if (options.existingOnly) throw new TenantConfigurationError('MANUAL_SETUP_MISSING', 'O banco exclusivo esperado ainda não foi criado pelo responsável do servidor.');
       await maintenance.unsafe(`create database ${quoteIdentifier(identity.database)} owner ${quoteIdentifier(identity.owner)} template template0 encoding 'UTF8'`);
     }
-    await maintenance.unsafe(`revoke all on database ${quoteIdentifier(identity.database)} from public`);
-    await maintenance.unsafe(`grant connect on database ${quoteIdentifier(identity.database)} to ${quoteIdentifier(identity.runtime)}`);
+    if (options.existingOnly) {
+      const [access] = await maintenance`select
+        pg_has_role(current_user,${identity.owner},'SET') as can_assume_owner,
+        has_database_privilege(${identity.runtime},${identity.database},'CONNECT') as can_connect,
+        has_database_privilege(${identity.runtime},${identity.database},'CREATE') as can_create,
+        has_database_privilege(${identity.runtime},${identity.database},'TEMP') as can_temp,
+        exists(select 1 from pg_database d, lateral aclexplode(coalesce(d.datacl,acldefault('d',d.datdba))) a
+          where d.datname=${identity.database} and a.grantee=0) as public_access`;
+      if (!access.can_assume_owner || !access.can_connect || access.can_create || access.can_temp || access.public_access)
+        throw new TenantConfigurationError('MANUAL_SETUP_UNSAFE', 'Revise o proprietário, CONNECT exclusivo e a retirada de CREATE/TEMP/PUBLIC no banco preparado.');
+    } else {
+      await maintenance.unsafe(`revoke all on database ${quoteIdentifier(identity.database)} from public`);
+      await maintenance.unsafe(`grant connect on database ${quoteIdentifier(identity.database)} to ${quoteIdentifier(identity.runtime)}`);
+    }
     target = options.connectMaintenanceDatabase(identity.database);
     await target.begin(async tx => {
       await tx.unsafe(`set local role ${quoteIdentifier(identity.owner)}`);
