@@ -13,6 +13,18 @@ O banco Supabase central mantém autenticação, empresas, vínculos, permissõe
 
 ## Preparação da infraestrutura
 
+### Situação do projeto atual em 03/10/2026
+
+O titular escolheu reutilizar o Supabase atual, projeto `kbqzwdttqptttoceygkd`, organização Phaxe Solutions. Nenhum PostgreSQL adicional foi criado na Railway. A Railway tem somente o frontend; não há operador de backup nem volume persistente configurado.
+
+O inventário remoto confirmou que `postgres` possui CREATEDB/CREATEROLE, mas não SUPERUSER. `postgres` e `template1` permitem conexão por `PUBLIC`; `template1` pertence a `supabase_admin`, cujo papel não pode ser assumido pela conexão disponível. Por isso, criar bancos e usuários novos não basta para passar a regra de isolamento atual: as credenciais ainda herdariam conexão a outras bases. Não foram alterados os privilégios dos serviços internos, e a verificação de isolamento continua obrigatória.
+
+Antes de provisionar, obter do suporte Supabase um procedimento suportado para restringir essas conexões preservando Auth, Storage, pooler, manutenção e atualizações. Texto preparado para o titular enviar (não enviado automaticamente):
+
+> No projeto kbqzwdttqptttoceygkd, precisamos de bancos lógicos separados por empresa, com usuários próprios que só possam conectar ao respectivo banco. O inventário mostra CONNECT para PUBLIC em postgres e template1. Template1 pertence a supabase_admin, e postgres não é superusuário nem pode assumir esse proprietário. Existe procedimento suportado para remover esse acesso herdado, mantendo os privilégios explícitos necessários aos serviços internos e garantindo persistência após upgrades? Precisamos também confirmar suporte a pg_dump/pg_restore dos bancos adicionais via conexão direta ou pooler de sessão com TLS validado. Não autorizamos mudanças antes de revisar o procedimento e a janela de aplicação.
+
+A resposta do suporte precisa ser validada no diagnóstico real com cada credencial empresarial. Ainda faltam segredos privados do operador, hospedagem Linux/armazenamento persistente, primeiro provisionamento, ensaio de recuperação e corte. Não colocar credenciais de manutenção no frontend. A imagem Linux e os testes do GitHub dispensam instalação de pg_dump no computador do titular, mas não constituem um serviço de backup de produção ativo.
+
 A documentação oficial confirma que [Supabase/Supavisor aceita bancos distintos e usuários próprios](https://supabase.com/docs/guides/troubleshooting/supavisor-faq-YyP5tI#what-is-the-userdbmode-combination). Auth, Storage e a API REST continuam no banco central; as consultas operacionais usam PostgreSQL pelo servidor da aplicação.
 
 Use uma conexão de manutenção com `CREATEDB`, `CREATEROLE` e capacidade de assumir o proprietário do banco. Use sessão direta ou pooler de sessão para provisionar; `CREATE DATABASE` não pode executar dentro de transação. Essa conexão **não deve existir no serviço web**. O usuário operacional não recebe criação de banco/perfis, superusuário, replicação, `BYPASSRLS`, associação a outros perfis ou acesso direto às tabelas.

@@ -8,7 +8,7 @@ A migração incremental empresarial `008-record-history.sql` restringe a consul
 
 Paginação por data/chave, com limite temporal superior devolvido na primeira página e IDs bigint serializados como texto. Evita deslocamento por novos eventos posteriores ao limite; não é um snapshot MVCC mantido entre requisições. A tela permite consultar eventos mais antigos ou atualizar desde o início; trocar empresa/registro cancela a consulta. A exportação unificada empresarial e a consulta global sem registro selecionado ainda estão pendentes. A exportação da auditoria central permanece separada.
 
-Os módulos centrais de registros/correções continuam não instalados em produção. A publicação desta consulta exige a definição atual de `admin-records.sql`, a migração empresarial 008 e o servidor/frontend correspondentes.
+Os módulos centrais de registros/correções foram instalados em 03/10/2026, incluindo o contexto de histórico, pela migração `20261003160232_admin_directory_audit_records`. A publicação desta consulta ainda exige bancos empresariais com a migração 008 e o servidor/frontend correspondentes.
 
 Verificação: [Linux 37134926607](https://github.com/ThiagoMassa/ERP/actions/runs/37134926607), commit `7427e1369a118866d793d31c42d05a21c334548c`, aprovado. Os testes exercitam duas fontes de auditoria, ID bigint acima da precisão JavaScript, páginas 20+6 sem duplicação, evento posterior fora do limite temporal, filtros por autor/usuário afetado/ação, contexto comum recusado, outra empresa sem acesso e registro auditado da consulta. SQL central e backup/restauração também passaram. Testes da API/executor e do componente em DOM simulado cobrem encaminhamento restrito, antes/depois e cancelamento de resposta após troca de empresa. Falta sessão real ponta a ponta.
 
@@ -20,7 +20,7 @@ Na consulta de produtos, **Ver campos → Corrigir dados cadastrais** permite re
 
 `007-admin-corrections.sql` adiciona versão de produto incrementada também pelas edições comuns, trava de registro, cache de repetição autorizado e transação única para cadastro e auditoria. Conflitos respondem 409. A repetição revalida a autorização antes de consultar o resultado anterior. A auditoria empresarial preserva antes/depois, justificativa, ADM real, autor original e correlação. O evento central `records.authorize.correct` registra a autorização, não comprova a conclusão da gravação; a auditoria final permanece no banco empresarial.
 
-Instalação pendente: registrar/aplicar `db/admin-corrections.sql` no controle central, instalar a migração 007 em cada banco e publicar o servidor/frontend juntos. Nada foi aplicado em produção. A validação local cobre SQL central com identidades/MFA de teste, duas bases empresariais reais, concorrência, rollback de falha na auditoria, idempotência, autoria e preservação de valores. Handler e componente usam rede simulada. Ainda falta o ensaio completo com sessão real e consulta integrada da auditoria empresarial.
+`db/admin-corrections.sql` foi aplicado no Supabase em 03/10/2026 pela migração `20261003160232_admin_directory_audit_records`. Ainda falta instalar as migrações empresariais e publicar o servidor/frontend juntos. Nenhum banco empresarial está pronto em produção. A validação local cobre SQL central com identidades/MFA de teste, duas bases empresariais reais, concorrência, rollback de falha na auditoria, idempotência, autoria e preservação de valores. Handler e componente usam rede simulada. Ainda falta o ensaio completo com sessão real e consulta integrada da auditoria empresarial.
 
 `POST /api/admin/records` recebe empresa UUID, operação permitida e filtros restritos. Não recebe conexão, credencial, contexto de autorização, comandos ou opção de exportação. O executor usa a sessão validada para solicitar `erp_admin_record_context`, que exige ADM ativo/AAL2 e banco pronto. A ausência de vínculo empresarial não impede uma inspeção explicitamente administrativa. Empresa suspensa continua inspecionável; banco em preparação/manutenção permanece indisponível.
 
@@ -30,7 +30,7 @@ Operações iniciais: produtos, parceiros, pedidos/detalhes, títulos/detalhes, 
 
 ## Instalação e pendências
 
-`db/admin-records.sql` depende dos módulos centrais `admin-control` e `tenant-backup-control`. É novo e não foi aplicado em produção; registrar migração incremental própria após homologação. Não torna nenhum banco pronto nem altera dados operacionais.
+`db/admin-records.sql` depende dos módulos centrais `admin-control` e `tenant-backup-control`. Foi aplicado no Supabase em 03/10/2026 pela migração `20261003160232_admin_directory_audit_records`. Fontes e checksums em `CENTRAL-DEPLOYMENT.md`; futuras alterações exigem nova migração incremental. Não torna nenhum banco pronto nem altera dados operacionais.
 
 A tela **Registros das empresas** mantém o contexto vermelho e a identificação da empresa, lista paginada, seleção do tipo e campos principais do registro. Mostra os filtros efetivamente aplicados e descarta seleção/resultados ao trocar empresa. Moeda e período são encaminhados ao motor; a tela explica que datas se aplicam a pedidos/títulos/movimentações e moeda a produtos/pedidos/títulos/saldos. O código da moeda não converte valores. Datas inválidas ou invertidas são recusadas.
 

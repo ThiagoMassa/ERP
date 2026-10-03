@@ -14,7 +14,7 @@ O JSON contém informações administrativas sensíveis, incluindo os detalhes a
 
 ## Instalação e alcance
 
-`db/admin-audit.sql` depende de `db/admin-control.sql` e é um módulo novo em desenvolvimento. Em 27/09/2026 não foi registrado nem aplicado como migração no Supabase. Deve receber migração incremental própria, com revisão dos privilégios e validação em homologação antes da ativação junto ao frontend. Não reescreva migrações já instaladas. Sem a RPC, a API retorna indisponibilidade explícita.
+`db/admin-audit.sql` depende de `db/admin-control.sql` e foi aplicado no Supabase em 03/10/2026 pela migração `20261003160232_admin_directory_audit_records`. Privilégios e recusa de chamadas sem sessão foram conferidos após a instalação. Fontes e checksums em `CENTRAL-DEPLOYMENT.md`. Não reescreva este módulo instalado; alterações exigem nova migração incremental. A publicação do frontend e o teste com MFA real continuam pendentes.
 
 Esta tela pesquisa o histórico central existente. A coleta completa de eventos operacionais dos bancos exclusivos, tentativas negadas e eventos de autenticação ainda exige integração adicional. Não interpretar uma consulta vazia como prova de ausência de toda atividade no sistema.
 
