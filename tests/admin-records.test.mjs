@@ -19,7 +19,7 @@ try{
  create table auth.mfa_factors(id uuid primary key,user_id uuid,status text);
  create function auth.jwt() returns jsonb language sql stable as $$select current_setting('request.jwt.claims',true)::jsonb$$;
  create function auth.uid() returns uuid language sql stable as $$select (auth.jwt()->>'sub')::uuid$$;`);
- for(const file of ['admin-control','tenant-routing','tenant-backup-control','admin-records','admin-corrections','admin-product-status','admin-company-directory'])await db.unsafe(await readFile(new URL('../db/'+file+'.sql',import.meta.url),'utf8'));
+ for(const file of ['admin-control','tenant-routing','tenant-backup-control','admin-records','admin-corrections','admin-product-status','admin-company-directory','admin-overview'])await db.unsafe(await readFile(new URL('../db/'+file+'.sql',import.meta.url),'utf8'));
  // The disposable tenant starts stricter than Supabase's central exposed schema.
  await db`grant usage on schema public to authenticated`;
  const adm=randomUUID(),user=randomUUID(),session=randomUUID(),company=randomUUID(),now=Math.floor(Date.now()/1000);
@@ -71,6 +71,20 @@ try{
  await db`update erp_control.companies set provisioning='suspended' where id=${company}`;await assert.rejects(context(),e=>e.code==='42501');
  await assert.rejects(correction(),e=>e.code==='42501');
  assert.equal((await db`select has_function_privilege('anon','public.erp_admin_record_context(uuid,text)','execute') as allowed`)[0].allowed,false);
+ const overview=async()=>(await db`select public.erp_admin_read('overview','{}') as data`)[0].data;
+ const userFixtures=Array.from({length:5},()=>randomUUID());
+ await db`update auth.users set email_confirmed_at=now() where id=${adm}`;
+ for(let i=0;i<5;i++)await db`insert into auth.users(id,email_confirmed_at,banned_until) values(${userFixtures[i]},${i===0||i===4?null:new Date()},${i===2?new Date(Date.now()+3600000):null})`;
+ await db`insert into erp_control.user_access(user_id,status) values(${userFixtures[3]},'suspended'),(${userFixtures[4]},'blocked')`;
+ const metrics=await overview();assert.equal(metrics.users,7);assert.equal(metrics.active_users,2);assert.equal(metrics.pending_users,2);assert.equal(metrics.blocked_users,2);assert.equal(metrics.suspended_users,1);
+ assert.equal(metrics.users,metrics.active_users+metrics.pending_users+metrics.blocked_users+metrics.suspended_users);
+ await db`update erp_control.companies set provisioning='failed' where id=${company}`;
+ const alertId=randomUUID();await db`insert into erp_control.audit(actor_id,company_id,action,result,reason,correlation_id) values(${adm},${company},'fixture.denied','denied','private-reason-not-an-alert',${alertId})`;
+ const failedJob=randomUUID();await db`insert into erp_control.maintenance_jobs(id,company_id,kind,backup_id,actor_id,session_id,token_issued_at,reason,retention_days,request_hash,status,stage,access_epoch,failure_code) values(${failedJob},${company},'backup',${failed},${adm},${session},now(),'private-job-reason',30,'fixture','failed','failed',${company},'private-driver-detail')`;
+ const alerts=await overview();assert.equal(alerts.provisioning_failures[0].id,company);assert.ok(alerts.security_events.some(e=>e.correlation_id===alertId));assert.ok(alerts.security_events.every(e=>typeof e.id==='string'));assert.ok(!JSON.stringify(alerts.security_events).includes('private-reason'));
+ assert.equal(alerts.maintenance_failures[0].id,failedJob);assert.equal(alerts.maintenance_failures[0].company_name,'Empresa inspecionada');assert.ok(!JSON.stringify(alerts.maintenance_failures).includes('private-'));
+ await setToken({...token,aal:'aal1'});await assert.rejects(overview(),e=>e.code==='42501');await setToken(token);
+ assert.equal((await db`select has_function_privilege('anon','erp_control.overview()','execute') as allowed`)[0].allowed,false);
  await db`delete from auth.sessions where id=${session}`;await assert.rejects(context(),e=>e.code==='28000');
  console.log('PASS: autorização administrativa explícita de leitura, sem vínculo obrigatório, empresa suspensa inspecionável, manutenção/AAL1/revogação/ADM inativo negados, escrita e exportação desativadas, autorização auditada.');
 }finally{
