@@ -34,6 +34,7 @@ COPY tests/tenant-preflight.test.mjs ./tests/
 COPY tests/tenant-manual-provision.test.mjs ./tests/
 COPY db/admin-control.sql db/tenant-routing.sql db/tenant-backup-control.sql db/admin-records.sql db/admin-corrections.sql ./db/
 COPY db/admin-product-status.sql ./db/
+COPY db/admin-company-directory.sql ./db/
 COPY tests/helpers/pg-tools.mjs ./tests/helpers/
 ENTRYPOINT ["node", "--experimental-strip-types", "tests/linux-backup-runner.mjs"]
 CMD []

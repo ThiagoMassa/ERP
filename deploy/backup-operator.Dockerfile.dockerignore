@@ -15,6 +15,7 @@
 !db/admin-records.sql
 !db/admin-corrections.sql
 !db/admin-product-status.sql
+!db/admin-company-directory.sql
 !scripts/
 !scripts/run-maintenance.mjs
 !scripts/preflight-tenant.mjs

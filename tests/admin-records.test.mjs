@@ -19,7 +19,7 @@ try{
  create table auth.mfa_factors(id uuid primary key,user_id uuid,status text);
  create function auth.jwt() returns jsonb language sql stable as $$select current_setting('request.jwt.claims',true)::jsonb$$;
  create function auth.uid() returns uuid language sql stable as $$select (auth.jwt()->>'sub')::uuid$$;`);
- for(const file of ['admin-control','tenant-routing','tenant-backup-control','admin-records','admin-corrections','admin-product-status'])await db.unsafe(await readFile(new URL('../db/'+file+'.sql',import.meta.url),'utf8'));
+ for(const file of ['admin-control','tenant-routing','tenant-backup-control','admin-records','admin-corrections','admin-product-status','admin-company-directory'])await db.unsafe(await readFile(new URL('../db/'+file+'.sql',import.meta.url),'utf8'));
  // The disposable tenant starts stricter than Supabase's central exposed schema.
  await db`grant usage on schema public to authenticated`;
  const adm=randomUUID(),user=randomUUID(),session=randomUUID(),company=randomUUID(),now=Math.floor(Date.now()/1000);
@@ -33,6 +33,20 @@ try{
  const context=async(operation='products')=>(await db`select public.erp_admin_record_context(${company},${operation}) as data`)[0].data;
  await db`insert into tenant.actors(id) values(${adm})`;
  await db`insert into public.business_units(id,owner_id,name,model) values(${company},${adm},'Empresa inspecionada','service')`;
+ const directory=async(filters={company})=>(await db`select public.erp_admin_read('companies',${db.json(filters)}) as data`)[0].data;
+ const emptyBackup=(await directory()).rows[0];assert.equal(emptyBackup.id,company);assert.ok(emptyBackup.created_at);assert.equal(emptyBackup.latest_backup_status,null);assert.equal(emptyBackup.database_identity,null);
+ assert.equal(emptyBackup.linked_users,1);assert.equal(emptyBackup.members,1);
+ await db`update erp_control.memberships set active=false where company_id=${company}`;
+ assert.equal((await directory()).rows[0].linked_users,1);assert.equal((await directory()).rows[0].members,0);
+ const verified=randomUUID(),failed=randomUUID();
+ await db`insert into erp_control.backups(id,company_id,status,created_at,verified_at,retention_until,artifact_ref,checksum) values(${verified},${company},'verified',now()-interval '2 days',now()-interval '1 day',now()+interval '10 days','private-artifact-never-return','checksum-never-return')`;
+ await db`insert into erp_control.backups(id,company_id,status,created_at,note) values(${failed},${company},'failed',now(),'private-note-never-return')`;
+ const latest=(await directory()).rows[0];assert.equal(latest.latest_backup_id,failed);assert.equal(latest.latest_backup_status,'failed');assert.equal(latest.latest_backup_verified_at,null);assert.ok(latest.last_backup);
+ assert.ok(!JSON.stringify(latest).includes('never-return'));assert.equal(latest.credential_ref,undefined);
+ assert.equal((await directory({company,page:1,size:1})).rows.length,0);assert.equal((await directory({company,page:1,size:1})).count,1);
+ assert.equal((await directory({company:randomUUID()})).count,0);
+ await setToken({...token,aal:'aal1'});await assert.rejects(directory(),e=>e.code==='42501');await setToken(token);
+ assert.equal((await db`select has_function_privilege('anon','erp_control.company_directory(jsonb)','execute') as ok`)[0].ok,false);
  await assert.rejects(context(),e=>e.code==='42501');
  await db`update erp_control.companies set provisioning='ready',database_identity='fixture',credential_ref='fixture',health_checked_at=now(),status='suspended' where id=${company}`;
  await db`delete from erp_control.memberships where company_id=${company}`;
