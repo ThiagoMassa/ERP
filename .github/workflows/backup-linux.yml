@@ -14,6 +14,7 @@ on:
       - 'db/tenant/**'
       - 'db/admin-records.sql'
       - 'db/admin-corrections.sql'
+      - 'db/admin-product-status.sql'
       - 'tests/admin-records.test.mjs'
       - 'tests/tenant-backup.test.mjs'
       - 'tests/tenant-corrections.test.mjs'

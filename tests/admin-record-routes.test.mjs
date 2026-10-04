@@ -32,6 +32,7 @@ try{
  assert.equal((await patch(correction,false)).status,401);
  for(const value of [{...correction,company:null},{...correction,scope:'admin-correct'},{...correction,operation:'product.save'},{...correction,data:{...correction.data,version:0}},{...correction,data:{...correction.data,patch:{cost:1}}},{...correction,data:{...correction.data,patch:{owner_id:company}}},{...correction,data:{...correction.data,reason:'short'}}])assert.equal((await patch(value)).status,400);
  assert.equal((await patch(correction)).status,200);assert.deepEqual(calls.at(-1),['Bearer fixture',{company,mode:'command',operation:correction.operation,data:correction.data,key:company},'admin-correct']);
+ for(const operation of ['admin.product.archive','admin.product.restore']){const v={...correction,operation,data:{id:company,version:1,reason:'Ajuste administrativo da situação'}};assert.equal((await patch(v)).status,200);assert.equal(calls.at(-1)[1].operation,operation);assert.equal((await patch({...v,data:{...v.data,patch:{deleted_at:null}}})).status,400);}
  failure=new TenantConfigurationError('CONFLICT','Atualize o registro.');assert.equal((await patch(correction)).status,409);
  failure=new TenantConfigurationError('FORBIDDEN','Confirme a identidade.');assert.equal((await patch(correction)).status,403);
  failure=new Error('secret postgres credentials');assert.ok(!(await (await patch(correction)).text()).includes('secret'));

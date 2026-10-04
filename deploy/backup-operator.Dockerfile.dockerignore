@@ -14,6 +14,7 @@
 !db/tenant-backup-control.sql
 !db/admin-records.sql
 !db/admin-corrections.sql
+!db/admin-product-status.sql
 !scripts/
 !scripts/run-maintenance.mjs
 !scripts/preflight-tenant.mjs

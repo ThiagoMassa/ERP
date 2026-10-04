@@ -43,7 +43,11 @@ try{
  await act(async()=>correctionForm.dispatchEvent(new dom.window.Event('submit',{bubbles:true,cancelable:true})));
  assert.equal(edits.length,0);assert.match(document.body.textContent,/Confira antes de salvar/);assert.match(document.body.textContent,/Peça original/);assert.match(document.body.textContent,/Peça corrigida/);
  await click('Confirmar correção');assert.match(document.querySelector('[role=alert]').textContent,/Resposta indisponível/);
- await click('Confirmar correção');assert.equal(edits.length,2);assert.equal(edits[0].key,edits[1].key);assert.deepEqual(edits[0].data.patch,{name:'Peça corrigida'});assert.equal(edits[0].data.version,1);assert.match(document.body.textContent,/Dados cadastrais corrigidos/);
+ await click('Confirmar correção');assert.equal(edits.length,2);assert.equal(edits[0].key,edits[1].key);assert.deepEqual(edits[0].data.patch,{name:'Peça corrigida'});assert.equal(edits[0].data.version,1);assert.match(document.body.textContent,/Alteração registrada/);
+ await click('Ver campos');await click('Inativar produto');
+ const statusForm=document.querySelector('[aria-label="Correção de produto"] form');statusForm.querySelector('[name=reason]').value='Produto descontinuado pela administração';
+ await act(async()=>statusForm.dispatchEvent(new dom.window.Event('submit',{bubbles:true,cancelable:true})));
+ assert.match(document.body.textContent,/Situação/);await click('Confirmar situação');assert.equal(edits.at(-1).operation,'admin.product.archive');assert.equal(edits.at(-1).data.patch,undefined);
  let historyPending,historySignal;const previousFetch=globalThis.fetch;
  globalThis.fetch=async(url,init)=>{const value=JSON.parse(init.body);if(value.operation==='record_history'){assert.equal(value.filters.id,a);historySignal=init.signal;return new Promise(resolve=>{historyPending=resolve})}return previousFetch(url,init)};
  await click('Ver campos');await click('Histórico do registro');

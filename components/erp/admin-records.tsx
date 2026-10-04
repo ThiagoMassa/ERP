@@ -2,7 +2,7 @@
 import {useEffect,useRef,useState} from 'react';
 import type {SupabaseClient} from '@supabase/supabase-js';
 import {Database,Search,ChevronLeft,ChevronRight} from 'lucide-react';
-import {adminRecordRequest,adminProductCorrection,adminHistoryRequest} from '@/lib/admin-records';
+import {adminRecordRequest,adminHistoryRequest,adminRecordMutation} from '@/lib/admin-records';
 import {rows,str,num,type Row} from '@/lib/operations';
 import {z} from 'zod';
 
@@ -17,12 +17,12 @@ async function read(db:SupabaseClient,body:unknown,signal:AbortSignal):Promise<R
 }
 export function AdminRecords({db,company,companyName,onReauth}:{db:SupabaseClient;company:string;companyName:string;onReauth?:()=>void}){
  const today=new Date().toISOString().slice(0,10);
- const [query,setQuery]=useState({operation:'products',query:'',currency:'BRL',start:today.slice(0,8)+'01',end:today,page:0});
+ const [query,setQuery]=useState({operation:'products',status:'active',query:'',currency:'BRL',start:today.slice(0,8)+'01',end:today,page:0});
  const [data,setData]=useState<Row|null>(null),[error,setError]=useState(''),[selected,setSelected]=useState<Row|null>(null);
  const [notice,setNotice]=useState('');
  useEffect(()=>{
   if(!company)return;const controller=new AbortController();
-  read(db,{company,operation:query.operation,filters:{query:query.query,currency:query.currency,start:query.start,end:query.end,page:query.page,size:20}},controller.signal)
+  read(db,{company,operation:query.operation,filters:{status:query.status,query:query.query,currency:query.currency,start:query.start,end:query.end,page:query.page,size:20}},controller.signal)
    .then(result=>{if(!controller.signal.aborted)setData(result)}).catch(e=>{if(!controller.signal.aborted)setError(e instanceof Error?e.message:'Consulta indisponível.')});
   return()=>controller.abort();
  },[db,company,query]);
@@ -32,16 +32,16 @@ export function AdminRecords({db,company,companyName,onReauth}:{db:SupabaseClien
  return <section className="adm-card adm-records" aria-label="Consulta administrativa de registros">
   <header><h2>Registros da empresa</h2><strong>{companyName||company}</strong><small>{company}</small><p>Consulte os registros e revise os dados cadastrais dos produtos. Valores são exibidos na moeda registrada, sem conversão.</p></header>
   {notice?<p role="status">{notice}</p>:null}
-  <form onSubmit={e=>{e.preventDefault();const f=new FormData(e.currentTarget);change({operation:str(f.get('operation')),query:str(f.get('query')),currency:str(f.get('currency')).toUpperCase(),start:str(f.get('start')),end:str(f.get('end')),page:0})}}>
-   <div className="adm-audit-filters"><label>Tipo de registro<select name="operation" defaultValue={query.operation}>{types.map(([id,label])=><option key={id} value={id}>{label}</option>)}</select></label><label>Nome ou descrição<input name="query" maxLength={160} defaultValue={query.query}/></label><label>Moeda (código)<input name="currency" minLength={3} maxLength={3} pattern="[A-Za-z]{3}" required defaultValue={query.currency}/></label><label>De<input name="start" type="date" required defaultValue={query.start}/></label><label>Até<input name="end" type="date" required defaultValue={query.end}/></label><button className="primary"><Search size={16}/> Consultar</button></div>
-   <p>O período filtra pedidos pela data, títulos pelo vencimento e movimentações pela criação. A moeda filtra produtos, pedidos, títulos e saldos. A busca textual não se aplica às movimentações.</p>
+  <form onSubmit={e=>{e.preventDefault();const f=new FormData(e.currentTarget);change({operation:str(f.get('operation')),status:str(f.get('status')),query:str(f.get('query')),currency:str(f.get('currency')).toUpperCase(),start:str(f.get('start')),end:str(f.get('end')),page:0})}}>
+   <div className="adm-audit-filters"><label>Tipo de registro<select name="operation" defaultValue={query.operation}>{types.map(([id,label])=><option key={id} value={id}>{label}</option>)}</select></label><label>Produtos<select name="status" defaultValue={query.status}><option value="active">Ativos</option><option value="archived">Inativos</option></select></label><label>Nome ou descrição<input name="query" maxLength={160} defaultValue={query.query}/></label><label>Moeda (código)<input name="currency" minLength={3} maxLength={3} pattern="[A-Za-z]{3}" required defaultValue={query.currency}/></label><label>De<input name="start" type="date" required defaultValue={query.start}/></label><label>Até<input name="end" type="date" required defaultValue={query.end}/></label><button className="primary"><Search size={16}/> Consultar</button></div>
+   <p>O filtro de situação aplica-se somente aos produtos. O período filtra pedidos pela data, títulos pelo vencimento e movimentações pela criação. A moeda filtra produtos, pedidos, títulos e saldos. A busca textual não se aplica às movimentações.</p>
   </form>
-  <p className="adm-audit-applied">Consulta aplicada: {types.find(([id])=>id===query.operation)?.[1]} · {query.currency} · {query.start} a {query.end}{query.query?` · Busca: ${query.query}`:''}</p>
+  <p className="adm-audit-applied">Consulta aplicada: {types.find(([id])=>id===query.operation)?.[1]} · {query.operation==='products'?(query.status==='archived'?'Inativos':'Ativos'):'Todos'} · {query.currency} · {query.start} a {query.end}{query.query?` · Busca: ${query.query}`:''}</p>
   {error?<p role="alert" className="op-error">{error}</p>:!data?<p role="status">Consultando banco da empresa…</p>:<>
    {records.length?<div className="op-table-scroll"><table className="op-table"><thead><tr><th>Registro</th><th>Situação / tipo</th><th>Moeda</th><th>Consulta</th></tr></thead><tbody>{records.map((r,i)=><tr key={str(r.id)||[r.product_id,r.warehouse_id,i].join(':')}><td>{str(r.name||r.description||r.partner_name)||'Sem descrição'}<small>{str(r.id||r.product_id)}</small></td><td>{str(r.status||r.kind||r.type)||'—'}</td><td>{str(r.currency)||'—'}</td><td><button className="op-small-button" onClick={()=>setSelected(r)}>Ver campos</button></td></tr>)}</tbody></table></div>:<p>Nenhum registro corresponde aos filtros aplicados.</p>}
    <div className="op-form-footer"><span>{count} registros · página {query.page+1}</span><button className="op-small-button" disabled={!query.page} onClick={()=>change({...query,page:query.page-1})}><ChevronLeft size={16}/>Anterior</button><button className="op-small-button" disabled={(query.page+1)*20>=count} onClick={()=>change({...query,page:query.page+1})}>Próxima<ChevronRight size={16}/></button></div>
   </>}
-  {selected?<aside className="adm-record-detail" aria-label="Campos do registro"><h3>Campos do registro · {companyName||company}</h3><RecordDetails key={[company,query.operation,selected.id,selected.product_id,selected.warehouse_id].join(':')} db={db} company={company} operation={query.operation} record={selected}/>{query.operation==='products'?<ProductCorrection key={[company,selected.id,selected.record_version].join(':')} db={db} company={company} companyName={companyName} record={selected} onReauth={onReauth} onSaved={()=>{change({...query});setNotice('Dados cadastrais corrigidos. A justificativa e os valores anteriores foram registrados no histórico da empresa.')}}/>:null}{z.string().uuid().safeParse(selected.id).success?<RecordHistory key={[company,selected.id].join(':')} db={db} company={company} id={str(selected.id)}/>:null}<button className="op-small-button" onClick={()=>setSelected(null)}>Fechar campos</button></aside>:null}
+  {selected?<aside className="adm-record-detail" aria-label="Campos do registro"><h3>Campos do registro · {companyName||company}</h3><RecordDetails key={[company,query.operation,selected.id,selected.product_id,selected.warehouse_id].join(':')} db={db} company={company} operation={query.operation} record={selected}/>{query.operation==='products'?<ProductCorrection key={[company,selected.id,selected.record_version].join(':')} db={db} company={company} companyName={companyName} record={selected} onReauth={onReauth} onSaved={()=>{change({...query});setNotice('Alteração registrada. A justificativa e os valores anteriores estão no histórico da empresa.')}}/>:null}{z.string().uuid().safeParse(selected.id).success?<RecordHistory key={[company,selected.id].join(':')} db={db} company={company} id={str(selected.id)}/>:null}<button className="op-small-button" onClick={()=>setSelected(null)}>Fechar campos</button></aside>:null}
  </section>;
 }
 
@@ -68,16 +68,16 @@ function RecordHistory({db,company,id}:{db:SupabaseClient;company:string;id:stri
 }
 
 const editableProductFields={name:'Nome',description:'Descrição',category:'Categoria',sku:'Código (SKU)',supplier:'Fornecedor descritivo',location:'Localização descritiva'};
-type Correction=z.infer<typeof adminProductCorrection>;
+type Correction=z.infer<typeof adminRecordMutation>;
 function ProductCorrection({db,company,companyName,record,onReauth,onSaved}:{db:SupabaseClient;company:string;companyName:string;record:Row;onReauth?:()=>void;onSaved:()=>void}){
- const [open,setOpen]=useState(false),[prepared,setPrepared]=useState<Correction|null>(null),[error,setError]=useState(''),[busy,setBusy]=useState(false);
+ const [open,setOpen]=useState(false),[statusMode,setStatusMode]=useState(false),[prepared,setPrepared]=useState<Correction|null>(null),[error,setError]=useState(''),[busy,setBusy]=useState(false);
  const request=useRef<AbortController|null>(null),saving=useRef(false);
  useEffect(()=>()=>request.current?.abort(),[]);
  if(!Number.isInteger(record.record_version)||num(record.record_version)<1)return <p>Correção indisponível até atualizar o banco e consultar a versão do produto.</p>;
  function review(form:HTMLFormElement){
   const values=new FormData(form),patch:Record<string,string>={};
   for(const key of Object.keys(editableProductFields)){const next=str(values.get(key));if(next!==str(record[key]))patch[key]=next}
-  const parsed=adminProductCorrection.safeParse({company,operation:'admin.product.correct',key:crypto.randomUUID(),data:{id:record.id,version:record.record_version,reason:values.get('reason'),patch}});
+  const parsed=adminRecordMutation.safeParse({company,operation:statusMode?(record.deleted_at?'admin.product.restore':'admin.product.archive'):'admin.product.correct',key:crypto.randomUUID(),data:{id:record.id,version:record.record_version,reason:values.get('reason'),...(statusMode?{}:{patch})}});
   if(!parsed.success){setError('Altere pelo menos um campo permitido e informe uma justificativa de 10 a 1.000 caracteres.');return}
   setError('');setPrepared(parsed.data);
  }
@@ -94,11 +94,11 @@ function ProductCorrection({db,company,companyName,record,onReauth,onSaved}:{db:
   }catch(e){if(!controller.signal.aborted)setError(e instanceof Error?e.message:'Resposta não recebida. Tente novamente com esta mesma revisão.');}
   finally{saving.current=false;if(!controller.signal.aborted)setBusy(false)}
  }
- if(!open)return <button className="op-small-button" onClick={()=>setOpen(true)}>Corrigir dados cadastrais</button>;
- return <section aria-label="Correção de produto"><h4>Corrigir produto · {companyName||company}</h4><p>Nome, descrição e organização do catálogo. Estoque, custo, preço e autoria original permanecem preservados.</p><small>Produto: {str(record.id)} · Versão: {num(record.record_version)}</small>
+ if(!open)return <div className="op-form-footer"><button className="op-small-button" onClick={()=>{setStatusMode(false);setOpen(true)}}>Corrigir dados cadastrais</button><button className="op-small-button" onClick={()=>{setStatusMode(true);setOpen(true)}}>{record.deleted_at?'Reativar produto':'Inativar produto'}</button></div>;
+ return <section aria-label="Correção de produto"><h4>{statusMode?(record.deleted_at?'Reativar produto':'Inativar produto'):'Corrigir produto'} · {companyName||company}</h4>{statusMode?<p>A inativação preserva o registro e exige saldo zerado, pedidos concluídos e ausência de produção pendente. A reativação permite voltar a utilizar o produto. Nenhum histórico é excluído.</p>:null}<p>Nome, descrição e organização do catálogo. Estoque, custo, preço e autoria original permanecem preservados.</p><small>Produto: {str(record.id)} · Versão: {num(record.record_version)}</small>
   {error?<p role="alert" className="op-error">{error}</p>:null}
-  <form hidden={!!prepared} onSubmit={e=>{e.preventDefault();review(e.currentTarget)}}><div className="adm-audit-filters">{Object.entries(editableProductFields).map(([key,label])=><label key={key}>{label}{key==='description'?<textarea name={key} defaultValue={str(record[key])} maxLength={2000}/>:<input name={key} defaultValue={str(record[key])} maxLength={key==='name'?160:240} required={key==='name'||key==='category'}/>}</label>)}</div><label>Justificativa<textarea name="reason" minLength={10} maxLength={1000} required placeholder="Explique por que esta correção é necessária."/></label><button className="primary">Revisar alterações</button></form>
-  {prepared?<><h4>Confira antes de salvar</h4><div className="op-table-scroll"><table className="op-table"><thead><tr><th>Campo</th><th>Antes</th><th>Depois</th></tr></thead><tbody>{Object.entries(prepared.data.patch).map(([key,value])=><tr key={key}><th>{editableProductFields[key as keyof typeof editableProductFields]}</th><td>{str(record[key])||'—'}</td><td>{value||'—'}</td></tr>)}</tbody></table></div><p>Justificativa: {prepared.data.reason}</p><p>Para salvar, confirme sua identidade com o segundo fator nos últimos cinco minutos. Se o produto mudou, atualize a consulta e refaça a revisão.</p><div className="op-form-footer"><button className="op-small-button" disabled={busy} onClick={()=>setPrepared(null)}>Voltar aos campos</button>{onReauth?<button className="op-small-button" disabled={busy} onClick={onReauth}>Confirmar identidade</button>:null}<button className="primary" disabled={busy} onClick={()=>void save()}>{busy?'Salvando…':'Confirmar correção'}</button></div></>:null}
+  <form hidden={!!prepared} onSubmit={e=>{e.preventDefault();review(e.currentTarget)}}><div className="adm-audit-filters">{!statusMode&&Object.entries(editableProductFields).map(([key,label])=><label key={key}>{label}{key==='description'?<textarea name={key} defaultValue={str(record[key])} maxLength={2000}/>:<input name={key} defaultValue={str(record[key])} maxLength={key==='name'?160:240} required={key==='name'||key==='category'}/>}</label>)}</div><label>Justificativa<textarea name="reason" minLength={10} maxLength={1000} required placeholder="Explique por que esta correção é necessária."/></label><button className="primary">Revisar alterações</button></form>
+  {prepared?<><h4>Confira antes de salvar</h4><div className="op-table-scroll"><table className="op-table"><thead><tr><th>Campo</th><th>Antes</th><th>Depois</th></tr></thead><tbody>{'patch' in prepared.data?Object.entries(prepared.data.patch).map(([key,value])=><tr key={key}><th>{editableProductFields[key as keyof typeof editableProductFields]}</th><td>{str(record[key])||'—'}</td><td>{value||'—'}</td></tr>):<tr><th>Situação</th><td>{record.deleted_at?'Inativo':'Ativo'}</td><td>{record.deleted_at?'Ativo':'Inativo'}</td></tr>}</tbody></table></div><p>Justificativa: {prepared.data.reason}</p><p>Para salvar, confirme sua identidade com o segundo fator nos últimos cinco minutos. Se o produto mudou, atualize a consulta e refaça a revisão.</p><div className="op-form-footer"><button className="op-small-button" disabled={busy} onClick={()=>setPrepared(null)}>Voltar aos campos</button>{onReauth?<button className="op-small-button" disabled={busy} onClick={onReauth}>Confirmar identidade</button>:null}<button className="primary" disabled={busy} onClick={()=>void save()}>{busy?'Salvando…':statusMode?'Confirmar situação':'Confirmar correção'}</button></div></>:null}
  </section>;
 }
 

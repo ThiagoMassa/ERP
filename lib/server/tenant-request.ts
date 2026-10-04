@@ -3,14 +3,14 @@ import {createClient} from '@supabase/supabase-js';
 import postgres from 'postgres';
 import {inspectTenant,assertTenantReady,tenantMigrations} from './tenant-database';
 import {tenantIdentity,tenantConnectionOptions,TenantConfigurationError} from './tenant-identity';
-import {adminRecordRequest,adminProductCorrection} from '../admin-records';
+import {adminRecordRequest,adminRecordMutation} from '../admin-records';
 
 export type TenantRequest = {company: string|null; mode: 'read'|'command'; operation: string; data: Record<string,unknown>; key?: string};
 
 /** Each request rechecks the central live session and policies. No authorization cache. */
 export async function executeTenantRequest(authorization: string, request: TenantRequest, scope:'company'|'admin-read'|'admin-correct'='company') {
   if(scope==='admin-correct'){
-    if(request.mode!=='command'||!adminProductCorrection.safeParse({company:request.company,operation:request.operation,key:request.key,data:request.data}).success)throw new TenantConfigurationError('INVALID_OPERATION','Correção administrativa inválida.');
+    if(request.mode!=='command'||!adminRecordMutation.safeParse({company:request.company,operation:request.operation,key:request.key,data:request.data}).success)throw new TenantConfigurationError('INVALID_OPERATION','Correção administrativa inválida.');
   }else if(request.operation.startsWith('admin.')||scope==='company'&&request.operation==='record_history')throw new TenantConfigurationError('FORBIDDEN','Utilize o acesso administrativo autorizado.');
   if(scope==='admin-read'){
     const checked=adminRecordRequest.safeParse({company:request.company,operation:request.operation,filters:request.data});
