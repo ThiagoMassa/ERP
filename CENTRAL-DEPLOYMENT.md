@@ -2,6 +2,8 @@
 
 ## Atualização em 04/10/2026
 
+Migração **20261004104831_admin_overview_metrics_alerts**, aplicada e conferida no histórico remoto. Fonte `db/admin-overview.sql`; SHA-256 `d61770a025de285637858d3c1f2c61f27b428097292edcafaf828e33d0affe5b`. Completa a classificação de contas e os resumos de falhas registradas. RPC pública permanece SECURITY INVOKER; função privada nega EXECUTE a anon e exige ADM/AAL2 por meio do leitor existente. Chamadas sem sessão foram recusadas após instalação. Advisor mantém os avisos anteriores. Nenhuma conta, vínculo, empresa ou solicitação foi alterada pela implantação. Preservar a fonte instalada.
+
 Migração **20261004104327_admin_company_directory**, aplicada e conferida no histórico remoto. Fonte `db/admin-company-directory.sql`; SHA-256 `912c612d93f7df3acd2e569c3a029baa3d799bdd939733e0ce89d08648f37fdd`. Amplia a lista com cadastro, banco, vínculos e tentativa mais recente de backup, preservando a data do último verificado. Não retorna credenciais, artefatos, checksums ou notas privadas. RPC pública permanece SECURITY INVOKER; função privada nega EXECUTE a anon e valida ADM/AAL2 pelo leitor existente. Índice por empresa/data presente e chamadas sem sessão recusadas. Advisor sem novos avisos. A interface ainda não foi publicada; preservar esta fonte instalada.
 
 Migração **20261004103750_admin_product_status_context**, aplicada e conferida no histórico remoto. Fonte: `db/admin-product-status.sql`; SHA-256 dos bytes: `c37e6a765a618c1eae9bb300fd99d99d6b87637f2c6951471336e155e0298d79`. Preservar esta fonte instalada; alterações futuras exigem nova migração incremental.

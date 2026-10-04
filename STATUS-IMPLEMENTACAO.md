@@ -4,6 +4,8 @@ Esta revisão está em desenvolvimento. Não confundir a compilação local com 
 
 ## Aplicado no Supabase central
 
+- Migração `20261004104831_admin_overview_metrics_alerts`: totais exclusivos de contas ativas, pendentes, bloqueadas e suspensas, incluindo banimentos vigentes do Auth; resumos de falhas de provisionamento/manutenção e eventos negados/falhos em 24 horas. Privilégios e rejeição sem sessão conferidos; advisor sem novos avisos. Não altera cadastros nem substitui a coleta completa de eventos de autenticação.
+
 - Migração `20261004104327_admin_company_directory`: lista de empresas ampliada com criação, banco lógico, vínculos totais/ativos e tentativa mais recente de backup, distinta do último verificado. Privilégios, índice e rejeição sem sessão conferidos; sem novos avisos do advisor. Frontend permanece pendente de publicação.
 
 - Migração `20261004103750_admin_product_status_context`: contexto central para inativar/reativar produtos com ADM/MFA recente, justificativa e ação restrita. Privilégios e recusa sem sessão conferidos após instalação. Não altera produtos nem ativa bancos; migração empresarial 009 e frontend ainda pendentes.
@@ -22,6 +24,8 @@ Esta revisão está em desenvolvimento. Não confundir a compilação local com 
 - O segundo fator da conta inicial ainda precisa ser cadastrado pelo titular pelo fluxo `/admin`.
 
 ## Código local e testes
+
+- Painel principal ampliado com total de empresas, contas ativas/bloqueadas/suspensas/pendentes e alertas reais registrados. A soma das categorias de usuários fecha com o total e o alcance global é explícito. Alertas mostram empresa/operação/correlação sem detalhes privados do driver ou notas. A [execução Linux 37196468985](https://github.com/ThiagoMassa/ERP/actions/runs/37196468985), commit `43683ddc6a704ee9fa8b4dcb9492e04bd5814cc5`, passou contas com restrições, contagens, eventos, privilégios e regressões de provisionamento/correções/backup/restauração. Build, TypeScript e lint aprovados. Frontend publicado e sessão real ainda pendentes. Alcance em `ADMIN-OVERVIEW.md`.
 
 - Lista administrativa de empresas organizada em cadastro, usuários, banco e proteção dos dados: UUID, razão social, documento, criação, totais, provisionamento, identificação lógica, validação anterior e backups. Data histórica não afirma conexão em tempo real; **Verificar banco** continua executando o diagnóstico atual. A [execução Linux 37196189481](https://github.com/ThiagoMassa/ERP/actions/runs/37196189481), commit `f7e9caa02501de18baa10ae900f880830f25b751`, passou dados ausentes, falha posterior a backup verificado, vínculos inativos, paginação, ausência de referências privadas e negação de acesso; regressões de provisionamento/correções/recuperação aprovadas. Build, TypeScript e lint passaram. Falta validação autenticada da interface publicada. Detalhes em `ADMIN-COMPANIES.md`.
 
