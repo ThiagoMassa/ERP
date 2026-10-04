@@ -1,5 +1,13 @@
 # Consulta administrativa de registros — base em desenvolvimento
 
+## Inativação e reativação de produtos — 04/10/2026
+
+A consulta permite filtrar produtos ativos ou inativos. Em **Ver campos**, o ADM pode preparar a alteração de situação, informar justificativa e revisar antes de confirmar. A API aceita somente ID, versão e justificativa nessa operação; não aceita uma data de exclusão arbitrária. Empresa explícita, sessão ADM e MFA recente continuam obrigatórios.
+
+O módulo central incremental `db/admin-product-status.sql` autoriza somente a ação necessária (catálogo/excluir para inativação; catálogo/editar para reativação). Ele amplia o contexto instalado sem reescrever `db/admin-corrections.sql`. A migração empresarial `009-admin-product-status.sql` usa o comando operacional existente, incluindo impedimentos por saldo, pedidos abertos e produção pendente. Não exclui fisicamente o produto nem movimenta estoque/financeiro. Usa a trava da empresa na mesma ordem dos comandos operacionais, versão do produto e recibo idempotente. A alteração, os recibos e a auditoria antes/depois são confirmados na mesma transação; uma falha da auditoria reverte tudo. O autor original fica registrado como usuário afetado.
+
+O contexto central foi instalado pela migração `20261004103750_admin_product_status_context`, com privilégios e recusa sem sessão conferidos após aplicação. A migração empresarial 009 e a publicação do servidor/frontend continuam pendentes. API e componente foram testados com rede simulada; a [execução Linux 37195888258](https://github.com/ThiagoMassa/ERP/actions/runs/37195888258), commit `1adea9d76c890941cf1fb4d8518061c6e91159b1`, passou PostgreSQL real: estoque/pedido/produção pendentes, ativo/inativo, repetição, versão, concorrência e reversão após falha de auditoria. Backup/restauração e provisionamento manual também passaram com a migração 009. A validação com sessão real e empresa de produção permanece pendente. Isso não conclui as correções/inativações dos demais tipos de registro nem os cancelamentos/estornos administrativos.
+
 ## Histórico empresarial integrado — 03/10/2026
 
 **Ver campos → Histórico do registro** consulta os eventos do UUID selecionado no banco exclusivo. Reúne `erp_audit` e `tenant.audit`, identifica a origem, mostra autor, usuário afetado, motivo, resultado, correlação e valores anteriores/posteriores quando disponíveis. Não inventa o estado anterior de eventos antigos. Filtros: intervalo UTC de até 366 dias, autor, usuário afetado e ação exata. Eventos sem usuário afetado registrado não aparecem ao usar esse filtro.

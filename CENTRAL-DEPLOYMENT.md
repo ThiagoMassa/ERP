@@ -1,5 +1,13 @@
 # Registro de implantação central — 03/10/2026
 
+## Atualização em 04/10/2026
+
+Migração **20261004103750_admin_product_status_context**, aplicada e conferida no histórico remoto. Fonte: `db/admin-product-status.sql`; SHA-256 dos bytes: `c37e6a765a618c1eae9bb300fd99d99d6b87637f2c6951471336e155e0298d79`. Preservar esta fonte instalada; alterações futuras exigem nova migração incremental.
+
+Amplia o contexto de alteração administrativa para inativar/reativar produtos, exigindo ADM/MFA recente e somente a ação necessária. A função pública continua SECURITY INVOKER, com EXECUTE negado a anon; as duas novas operações foram recusadas sem sessão autenticada. Nenhum produto real foi alterado. A migração empresarial 009 e o frontend não foram publicados em produção. Testes positivos de autorização/transação usam identidades de ensaio no Linux, não a conta ADM real. Advisor mantém os avisos anteriores de tabelas privadas sem políticas e proteção contra senhas vazadas desativada.
+
+## Migração de 03/10/2026
+
 Projeto: kbqzwdttqptttoceygkd (Phaxe Solutions). Migração aplicada via conector Supabase: **20261003160232_admin_directory_audit_records**. Versão conferida no histórico remoto após a aplicação.
 
 Fontes concatenadas nesta ordem, separadas por uma quebra de linha. SHA-256 dos bytes locais de cada fonte; preservar os arquivos instalados e usar migrações incrementais para mudanças futuras. Este registro não é um comando de reaplicação.

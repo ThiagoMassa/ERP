@@ -1,8 +1,10 @@
-# Estado da implementação — 03/10/2026
+# Estado da implementação — 04/10/2026
 
 Esta revisão está em desenvolvimento. Não confundir a compilação local com a versão publicada na Railway.
 
 ## Aplicado no Supabase central
+
+- Migração `20261004103750_admin_product_status_context`: contexto central para inativar/reativar produtos com ADM/MFA recente, justificativa e ação restrita. Privilégios e recusa sem sessão conferidos após instalação. Não altera produtos nem ativa bancos; migração empresarial 009 e frontend ainda pendentes.
 
 - Migração `20261003160232_admin_directory_audit_records`: auditoria, diretório/perfil, normalização de eventos de conta, contextos de registros/histórico e correções. Privilégios, RLS e rejeição de chamadas sem sessão conferidos após aplicação. Fontes imutáveis e checksums em `CENTRAL-DEPLOYMENT.md`.
 
@@ -18,6 +20,8 @@ Esta revisão está em desenvolvimento. Não confundir a compilação local com 
 - O segundo fator da conta inicial ainda precisa ser cadastrado pelo titular pelo fluxo `/admin`.
 
 ## Código local e testes
+
+- Inativação/reativação administrativa de produtos integrada à consulta, com filtro ativo/inativo, revisão, versão, justificativa, MFA, recibo idempotente e auditoria antes/depois. Delega às regras operacionais para impedir inativação com estoque/pedidos/produção pendentes. Trava empresarial serializa com operações comuns; falha de auditoria reverte produto e recibos. A [execução Linux 37195888258](https://github.com/ThiagoMassa/ERP/actions/runs/37195888258), commit `1adea9d76c890941cf1fb4d8518061c6e91159b1`, passou os cenários reais, concorrência, provisionamento manual e backup/restauração com a migração 009. API/executor/componente passaram com dependências simuladas; build, TypeScript e lint passaram. Falta executar com sessão real após provisionar e publicar. Outros registros e estornos administrativos continuam pendentes.
 
 - Provisionamento manual: `scripts/provision-tenant.mjs <UUID> --existing` instala migrações em infraestrutura real previamente criada, sem criar bancos/perfis nem alterar senhas/ACLs do banco. Exige proprietário e papéis esperados, isolamento e SET ROLE; recusa recursos ausentes, privilégios inseguros, proprietário divergente e banco ocupado sem identidade. A tela **Registrar etapa** mostra empresa/UUID, andamento e instruções, preserva a etapa atual e exige justificativa/MFA para a anotação auditada. Só a validação/conciliação do servidor pode ativar a empresa. A [execução Linux 37154335603](https://github.com/ThiagoMassa/ERP/actions/runs/37154335603), commit `d6227bcc4819885e9173eba8c5290c0774eb6790`, passou com operador real sem SUPERUSER/CREATEDB/CREATEROLE, rollback de migração falha e repetição preservando senha/ACLs. Regressões de histórico/correções/backup/restauração aprovadas; build, TypeScript e lint locais aprovados. Faltam infraestrutura, execução de produção e validação autenticada do acompanhamento no painel.
 
