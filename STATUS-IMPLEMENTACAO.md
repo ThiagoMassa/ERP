@@ -4,6 +4,8 @@ Esta revisão está em desenvolvimento. Não confundir a compilação local com 
 
 ## Aplicado no Supabase central
 
+- Migração `20261004104327_admin_company_directory`: lista de empresas ampliada com criação, banco lógico, vínculos totais/ativos e tentativa mais recente de backup, distinta do último verificado. Privilégios, índice e rejeição sem sessão conferidos; sem novos avisos do advisor. Frontend permanece pendente de publicação.
+
 - Migração `20261004103750_admin_product_status_context`: contexto central para inativar/reativar produtos com ADM/MFA recente, justificativa e ação restrita. Privilégios e recusa sem sessão conferidos após instalação. Não altera produtos nem ativa bancos; migração empresarial 009 e frontend ainda pendentes.
 
 - Migração `20261003160232_admin_directory_audit_records`: auditoria, diretório/perfil, normalização de eventos de conta, contextos de registros/histórico e correções. Privilégios, RLS e rejeição de chamadas sem sessão conferidos após aplicação. Fontes imutáveis e checksums em `CENTRAL-DEPLOYMENT.md`.
@@ -20,6 +22,8 @@ Esta revisão está em desenvolvimento. Não confundir a compilação local com 
 - O segundo fator da conta inicial ainda precisa ser cadastrado pelo titular pelo fluxo `/admin`.
 
 ## Código local e testes
+
+- Lista administrativa de empresas organizada em cadastro, usuários, banco e proteção dos dados: UUID, razão social, documento, criação, totais, provisionamento, identificação lógica, validação anterior e backups. Data histórica não afirma conexão em tempo real; **Verificar banco** continua executando o diagnóstico atual. A [execução Linux 37196189481](https://github.com/ThiagoMassa/ERP/actions/runs/37196189481), commit `f7e9caa02501de18baa10ae900f880830f25b751`, passou dados ausentes, falha posterior a backup verificado, vínculos inativos, paginação, ausência de referências privadas e negação de acesso; regressões de provisionamento/correções/recuperação aprovadas. Build, TypeScript e lint passaram. Falta validação autenticada da interface publicada. Detalhes em `ADMIN-COMPANIES.md`.
 
 - Inativação/reativação administrativa de produtos integrada à consulta, com filtro ativo/inativo, revisão, versão, justificativa, MFA, recibo idempotente e auditoria antes/depois. Delega às regras operacionais para impedir inativação com estoque/pedidos/produção pendentes. Trava empresarial serializa com operações comuns; falha de auditoria reverte produto e recibos. A [execução Linux 37195888258](https://github.com/ThiagoMassa/ERP/actions/runs/37195888258), commit `1adea9d76c890941cf1fb4d8518061c6e91159b1`, passou os cenários reais, concorrência, provisionamento manual e backup/restauração com a migração 009. API/executor/componente passaram com dependências simuladas; build, TypeScript e lint passaram. Falta executar com sessão real após provisionar e publicar. Outros registros e estornos administrativos continuam pendentes.
 
