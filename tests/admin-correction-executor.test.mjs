@@ -29,6 +29,8 @@ try{
  context={...context,administrative:false};await assert.rejects(executeTenantRequest('Bearer fixture',request,'admin-correct'),e=>e.code==='FORBIDDEN');assert.equal(dispatched.length,1);
  context={...context,administrative:true,actor:company};await assert.rejects(executeTenantRequest('Bearer fixture',request,'admin-correct'),e=>e.code==='FORBIDDEN');assert.equal(dispatched.length,1);
  context={...context,actor};authError={message:'invalid'};await assert.rejects(executeTenantRequest('Bearer fixture',request,'admin-correct'),e=>e.code==='UNAUTHENTICATED');authError=null;
+ await assert.rejects(executeTenantRequest('Bearer fixture',{company,mode:'read',operation:'products',data:{}},'admin-read'),e=>e.code==='FORBIDDEN');
+ context={...context,administrative_read:true,admin_read_operation:'products',correlation:actor};
  await executeTenantRequest('Bearer fixture',{company,mode:'read',operation:'products',data:{}},'admin-read');assert.equal(dispatched.at(-1)[0].administrative,undefined);assert.equal(dispatched.at(-1)[0].admin_action,undefined);
  const history={company,mode:'read',operation:'record_history',data:{id:company,start:'2026-10-01',end:'2026-10-03'}};
  await assert.rejects(executeTenantRequest('Bearer fixture',history),e=>e.code==='FORBIDDEN');

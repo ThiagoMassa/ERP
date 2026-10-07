@@ -131,6 +131,32 @@ try{
  const statusConcurrent=await Promise.allSettled([runtime[0],peer].map(sql=>call('admin.product.archive',{id:item.id,version:restored.version,reason:'Inativação administrativa concorrente'},randomUUID(),{...context(),admin_action:'admin.product.archive'},sql)));
  assert.equal(statusConcurrent.filter(r=>r.status==='fulfilled').length,1);
  assert.equal(statusConcurrent.find(r=>r.status==='rejected').reason.code,'40001');
+ // Administrative search filters the full dataset, not just the current page.
+ const search=async(operation,filters={},overrides={},sql=runtime[0])=>call(operation,filters,null,{...context(),administrative_read:true,admin_read_operation:operation,read_correlation:readCorrelation,...overrides},sql,'read');
+ const allProducts=await search('products',{start:today,end:today,size:50});
+ assert.ok(allProducts.rows.some(r=>r.id===product.id));
+ assert.equal((await search('products',{id:product.id})).count,1);
+ assert.equal((await search('products',{id:randomUUID()})).count,0);
+ assert.equal((await search('products',{id:product.id,actor:adm})).count,1);
+ assert.equal((await search('products',{id:product.id,actor:author})).count,1);
+ assert.equal((await search('products',{id:product.id,actor:randomUUID()})).count,0);
+ assert.equal((await search('products',{id:product.id,start:'2000-01-01',end:'2000-01-01'})).count,0);
+ const secondPage=await search('products',{size:1,page:1});
+ assert.equal(secondPage.count,allProducts.count);assert.ok(secondPage.rows.length<=1);
+ assert.equal((await search('products',{id:item.id,status:'archived'})).count,1);
+ assert.equal((await search('products',{id:item.id,status:'active'})).count,0);
+ for(const operation of ['partners','orders','titles','stock','movements','jobs','spools','printers','recipes']){
+  const response=await search(operation,{size:1});assert.ok(Array.isArray(response.rows));
+  assert.equal((await search(operation,{id:randomUUID(),actor:randomUUID(),start:today,end:today})).count,0);
+ }
+ assert.ok((await search('movements',{actor:adm,query:'Entrada para ensaio',currency:'BRL'})).count>0);
+ assert.equal((await search('movements',{actor:adm,query:'Entrada para ensaio',currency:'USD'})).count,0);
+ assert.equal((await search('products',{id:product.id},{...context(1),administrative_read:true},runtime[1])).count,0);
+ await assert.rejects(search('products',{}, {admin_read_operation:'titles'}),e=>e.code==='42501');
+ const noRead=structuredClone(permissions);noRead.catalog.read.allowed=false;
+ await assert.rejects(search('products',{}, {permissions:noRead}),e=>e.code==='42501');
+ for(const filters of [{size:51},{start:today},{page:-1},{actor:'invalid'},{start:'2000-01-01',end:'2050-01-01'}])await assert.rejects(search('products',filters));
+ assert.ok((await db`select count(*)::int n from tenant.audit where action='records.read' and correlation_id=${readCorrelation}`)[0].n>0);
  await db`update tenant.identity set operational_state='maintenance'`;
  await assert.rejects(call('admin.product.correct',data,key),e=>e.code==='55000');
  assert.equal((await maintenance[1]`select count(*)::int n from public.products`)[0].n,0);

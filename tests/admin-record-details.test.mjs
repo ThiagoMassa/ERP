@@ -21,6 +21,9 @@ try{
  const mount=company=>act(async()=>{root.render(React.createElement(AdminRecords,{key:company,db,company,companyName:company===a?'Empresa A':'Empresa B'}))});
  const click=label=>act(async()=>{const button=[...document.querySelectorAll('button')].find(e=>e.textContent===label);assert.ok(button,label);button.click()});
  await mount(a);
+ await act(async()=>{document.querySelector('[name=id]').value=a;document.querySelector('[name=actor]').value=b;document.querySelector('form').dispatchEvent(new dom.window.Event('submit',{bubbles:true,cancelable:true}))});
+ assert.equal(requests.at(-1).filters.id,a);assert.equal(requests.at(-1).filters.actor,b);assert.match(document.querySelector('.adm-audit-applied').textContent,/Autor:/);
+ document.querySelector('[name=id]').value='';document.querySelector('[name=actor]').value='';
  await act(async()=>{document.querySelector('select[name=operation]').value='orders';document.querySelector('form').dispatchEvent(new dom.window.Event('submit',{bubbles:true,cancelable:true}))});
  await click('Ver campos');assert.equal(requests.at(-1).operation,'order_detail');assert.equal(requests.at(-1).filters.id,a);
  await act(async()=>{pending(Response.json({data:{id:a,business_id:a,currency:'BRL',items:[{id:b,name:'Peça premium',quantity:2,price:50,fulfilled:1,total:100}],fulfillments:[],titles:[]}}))});

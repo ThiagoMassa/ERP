@@ -44,7 +44,7 @@ export async function executeTenantRequest(authorization: string, request: Tenan
     throw new TenantConfigurationError('FORBIDDEN','Empresa ou sessão indisponível para esta conta.');
   }
   if(scope==='admin-correct'&&(context.administrative!==true||context.admin_action!==request.operation))throw new TenantConfigurationError('FORBIDDEN','Correção não autorizada. Confirme sua identidade e tente novamente.');
-  if(scope==='admin-read'&&request.operation==='record_history'&&(context.administrative_read!==true||context.admin_read_operation!==request.operation||typeof context.correlation!=='string'))throw new TenantConfigurationError('FORBIDDEN','Histórico não autorizado.');
+  if(scope==='admin-read'&&(context.administrative_read!==true||context.admin_read_operation!==request.operation||typeof context.correlation!=='string'))throw new TenantConfigurationError('FORBIDDEN','Consulta administrativa não autorizada.');
   const expected=tenantIdentity(request.company);
   if(context.provisioning!=='ready')throw new TenantConfigurationError('PROVISIONING_PENDING','O banco exclusivo desta empresa ainda está em preparação.');
   if(context.database_identity!==expected.database||context.credential_ref!==expected.credentialRef) {
@@ -58,7 +58,7 @@ export async function executeTenantRequest(authorization: string, request: Tenan
   const sql=postgres(tenantConnectionOptions(connection,request.company,options));
   try {
     // Whitelist the context returned by the central DB. Never forward a client context.
-    const trusted={actor:context.actor,company:context.company,expires_at:context.expires_at,permissions:context.permissions,epoch:context.access_epoch,...(scope==='admin-correct'?{administrative:context.administrative,admin_action:context.admin_action}:{}),...(scope==='admin-read'&&request.operation==='record_history'?{administrative_read:context.administrative_read,admin_read_operation:context.admin_read_operation,read_correlation:context.correlation}:{})};
+    const trusted={actor:context.actor,company:context.company,expires_at:context.expires_at,permissions:context.permissions,epoch:context.access_epoch,...(scope==='admin-correct'?{administrative:context.administrative,admin_action:context.admin_action}:{}),...(scope==='admin-read'?{administrative_read:context.administrative_read,admin_read_operation:context.admin_read_operation,read_correlation:context.correlation}:{})};
     const result=await sql`select tenant.dispatch(${sql.json(trusted)},${request.mode},${request.operation},${sql.json(request.data as postgres.JSONValue)},${request.key||null}) as data`;
     return result[0].data;
   } catch(error) {
