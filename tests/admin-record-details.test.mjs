@@ -26,8 +26,8 @@ try{
  document.querySelector('[name=id]').value='';document.querySelector('[name=actor]').value='';
  await act(async()=>{document.querySelector('select[name=operation]').value='orders';document.querySelector('form').dispatchEvent(new dom.window.Event('submit',{bubbles:true,cancelable:true}))});
  await click('Ver campos');assert.equal(requests.at(-1).operation,'order_detail');assert.equal(requests.at(-1).filters.id,a);
- await act(async()=>{pending(Response.json({data:{id:a,business_id:a,currency:'BRL',items:[{id:b,name:'Peça premium',quantity:2,price:50,fulfilled:1,total:100}],fulfillments:[],titles:[]}}))});
- assert.match(document.body.textContent,/Peça premium/);assert.match(document.body.textContent,/Itens do pedido · 1/);
+ await act(async()=>{pending(Response.json({data:{id:a,business_id:a,currency:'BRL',items:[{id:b,name:'Peça premium',quantity:2,price:50,fulfilled:1,total:100}],fulfillments:[],titles:[],fulfillment_items:[{id:b,fulfillment_id:a,name:'Item entregue',quantity:1,amount:50,warehouse_name:'Depósito principal',reversed_at:'2026-10-07T12:00:00Z',reason:'Devolução documentada'}],stock_movements:[{id:b,source_id:a,delta:-1,balance:9}],payments:[]}}))});
+ assert.match(document.body.textContent,/Peça premium/);assert.match(document.body.textContent,/Itens do pedido · 1/);assert.match(document.body.textContent,/Itens por atendimento · 1/);assert.match(document.body.textContent,/Movimentos de estoque vinculados · 1/);assert.match(document.body.textContent,/Devolução documentada/);assert.match(document.body.textContent,/Depósito principal/);
  await click('Fechar campos');await click('Ver campos');const stale=pending;
  await mount(b);assert.equal(detailSignal.aborted,true);
  await act(async()=>{stale(Response.json({data:{id:a,business_id:a,description:'VAZAMENTO ANTIGO',items:[]}}))});
