@@ -1,12 +1,20 @@
 # Consulta administrativa de registros — base em desenvolvimento
 
+## Relações de pedidos e títulos — 07/10/2026
+
+A migração empresarial `011-admin-record-details.sql` amplia o detalhamento administrativo dos pedidos com itens por atendimento, depósito, quantidade, valor, autor e estorno; movimentos de estoque vinculados aos atendimentos, incluindo devoluções; pagamentos dos títulos do pedido, incluindo pagamentos estornados. No título financeiro, mostra o pedido de origem e o atendimento de origem quando houver. IDs de atendimento, item, título e origem são exibidos para rastreabilidade.
+
+O servidor mantém as operações `order_detail`/`title_detail` e o contexto administrativo já autorizado. A consulta verifica também as permissões das áreas relacionadas e restringe os joins à empresa/documento selecionados. Um bloqueio compartilhado da linha empresarial impede alterações dos comandos operacionais durante a coleta das relações. O detalhe concluído gera `records.detail` com empresa, ADM, registro e correlação central; a consulta não altera documentos, estoque nem pagamentos. As consultas empresariais comuns preservam a resposta anterior.
+
+A [execução Linux 37661568602](https://github.com/ThiagoMassa/ERP/actions/runs/37661568602), commit c4ae84a8ee111d74c41b90411b70f7a33ca71fc8, passou criação/confirmação de pedido, atendimento, pagamento e estornos reais, conferência das relações, permissão financeira negada, empresa divergente, auditoria concluída e preservação da consulta comum. Provisionamento e backup/restauração também passaram com a migração 011. Build, TypeScript, lint e componente em DOM com rede simulada aprovados; contexto ADM dos testes SQL é uma fixture, sem login/MFA real. A migração 011 e a interface ainda não estão publicadas em produção. As relações dos demais módulos e os cancelamentos/estornos administrativos continuam pendentes.
+
 ## Pesquisa administrativa — 07/10/2026
 
 A migração empresarial incremental `010-admin-record-search.sql` aplica ID, autor registrado, período, texto e moeda antes de contar e paginar as listas administrativas. Contagem e página usam a mesma consulta SQL. O contexto administrativo de leitura é conferido e encaminhado pelo servidor para todas as consultas; a API empresarial comum não pode fornecer esse contexto. As consultas normais das empresas mantêm o comportamento anterior.
 
 O identificador corresponde ao registro; em saldos, ao produto. Autor corresponde ao criador explícito, ao ator do movimento ou a uma ação registrada na auditoria operacional/administrativa; em saldos, inclui movimentos do produto naquele depósito. Não se presume autoria pelo proprietário do cadastro, nem se inventa autoria ausente em dados antigos. Consultar o histórico não transforma o leitor em autor do registro. O período usa data do pedido, vencimento do título e criação UTC nos demais cadastros; em saldos, criação do produto. A interface explica essas diferenças e mostra ID/autor aplicados.
 
-Cada listagem concluída registra `records.read` no banco empresarial com a correlação central, filtros e quantidade retornada. A autorização central continua distinta da conclusão; falhas entre bancos ainda não têm registro distribuído garantido. Detalhes de pedidos/títulos continuam no fluxo existente.
+Cada listagem concluída registra `records.read` no banco empresarial com a correlação central, filtros e quantidade retornada. A autorização central continua distinta da conclusão; falhas entre bancos ainda não têm registro distribuído garantido. Detalhes de pedidos/títulos são ampliados pela migração 011 descrita acima.
 
 Build, TypeScript, lint e testes de API/executor/DOM passaram. A [execução Linux 37660968562](https://github.com/ThiagoMassa/ERP/actions/runs/37660968562), commit 904335475effabef5b9a64ad87d0a91b2bc7de56, passou filtros, contagem/paginação, datas operacionais distintas de criação, autoria ausente, permissões, migrações e recuperação real com PostgreSQL 17. A migração 010 não foi aplicada em produção: ainda faltam bancos empresariais, publicação e teste autenticado real.
 
@@ -54,7 +62,7 @@ A tela **Registros das empresas** mantém o contexto vermelho e a identificaçã
 
 Pedidos consultam detalhes por ID e mostram itens, atendimentos e títulos vinculados. Títulos mostram pagamentos, autores e informações de estorno disponíveis. As chamadas de detalhe exigem ID e a interface verifica ID/empresa da resposta. Fechar ou trocar empresa aborta a consulta; respostas antigas são descartadas. Campos são apresentados com rótulos, sem editor de SQL ou JSON.
 
-Faltam detalhamento das linhas de atendimento e relações de outros módulos, auditoria da conclusão/falha correlacionada entre bancos e correções nos demais tipos de registro, inativações e estornos administrativos. A correção cadastral de produtos está descrita acima. Também falta a verificação ponta a ponta com identidade real e banco empresarial provisionado. Essa etapa não conclui o item 9 do script.
+Faltam relações de outros módulos, auditoria da conclusão/falha correlacionada entre bancos e correções nos demais tipos de registro, inativações e estornos administrativos. A correção cadastral de produtos está descrita acima. Também falta a verificação ponta a ponta com identidade real e banco empresarial provisionado. Essa etapa não conclui o item 9 do script.
 
 Revisão de navegador com componente real e API fictícia: primeira/segunda página, campos selecionados, troca de empresa com limpeza de seleção e estado vazio; sem erros de console observados. Não representa validação dos dados reais nem de MFA.
 
