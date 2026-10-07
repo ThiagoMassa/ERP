@@ -1,5 +1,15 @@
 # Consulta administrativa de registros — base em desenvolvimento
 
+## Pesquisa administrativa — 07/10/2026
+
+A migração empresarial incremental `010-admin-record-search.sql` aplica ID, autor registrado, período, texto e moeda antes de contar e paginar as listas administrativas. Contagem e página usam a mesma consulta SQL. O contexto administrativo de leitura é conferido e encaminhado pelo servidor para todas as consultas; a API empresarial comum não pode fornecer esse contexto. As consultas normais das empresas mantêm o comportamento anterior.
+
+O identificador corresponde ao registro; em saldos, ao produto. Autor corresponde ao criador explícito, ao ator do movimento ou a uma ação registrada na auditoria operacional/administrativa; em saldos, inclui movimentos do produto naquele depósito. Não se presume autoria pelo proprietário do cadastro, nem se inventa autoria ausente em dados antigos. Consultar o histórico não transforma o leitor em autor do registro. O período usa data do pedido, vencimento do título e criação UTC nos demais cadastros; em saldos, criação do produto. A interface explica essas diferenças e mostra ID/autor aplicados.
+
+Cada listagem concluída registra `records.read` no banco empresarial com a correlação central, filtros e quantidade retornada. A autorização central continua distinta da conclusão; falhas entre bancos ainda não têm registro distribuído garantido. Detalhes de pedidos/títulos continuam no fluxo existente.
+
+Build, TypeScript, lint e testes de API/executor/DOM passaram. A [execução Linux 37660968562](https://github.com/ThiagoMassa/ERP/actions/runs/37660968562), commit 904335475effabef5b9a64ad87d0a91b2bc7de56, passou filtros, contagem/paginação, datas operacionais distintas de criação, autoria ausente, permissões, migrações e recuperação real com PostgreSQL 17. A migração 010 não foi aplicada em produção: ainda faltam bancos empresariais, publicação e teste autenticado real.
+
 ## Inativação e reativação de produtos — 04/10/2026
 
 A consulta permite filtrar produtos ativos ou inativos. Em **Ver campos**, o ADM pode preparar a alteração de situação, informar justificativa e revisar antes de confirmar. A API aceita somente ID, versão e justificativa nessa operação; não aceita uma data de exclusão arbitrária. Empresa explícita, sessão ADM e MFA recente continuam obrigatórios.
@@ -34,17 +44,17 @@ Na consulta de produtos, **Ver campos → Corrigir dados cadastrais** permite re
 
 A conexão é resolvida no servidor pelo identificador da empresa e passa pela mesma validação de identidade, migrações, privilégios restritos e geração de acesso usada no ERP. O contexto dura 25 segundos e concede apenas leitura. O endpoint comum não permite selecionar esse escopo. A função central registra `records.authorize.read`, com ator, empresa, tipo de consulta e correlação; esse evento comprova autorização, não a conclusão da leitura no banco empresarial.
 
-Operações iniciais: produtos, parceiros, pedidos/detalhes, títulos/detalhes, estoque, movimentações, produção, bobinas, impressoras e receitas de produção. Usa as consultas existentes do motor. Filtros iniciais: busca, ID, página, tamanho limitado a 50 e tipo de pedido. Não há promessa de busca por autor/período nesta etapa.
+Operações iniciais: produtos, parceiros, pedidos/detalhes, títulos/detalhes, estoque, movimentações, produção, bobinas, impressoras e receitas de produção. Preserva as políticas do motor e usa a consulta administrativa incremental para listagens. Filtros iniciais: busca, ID, página, tamanho limitado a 50 e tipo de pedido. A ampliação por autor/período está descrita na revisão de 07/10 acima.
 
 ## Instalação e pendências
 
 `db/admin-records.sql` depende dos módulos centrais `admin-control` e `tenant-backup-control`. Foi aplicado no Supabase em 03/10/2026 pela migração `20261003160232_admin_directory_audit_records`. Fontes e checksums em `CENTRAL-DEPLOYMENT.md`; futuras alterações exigem nova migração incremental. Não torna nenhum banco pronto nem altera dados operacionais.
 
-A tela **Registros das empresas** mantém o contexto vermelho e a identificação da empresa, lista paginada, seleção do tipo e campos principais do registro. Mostra os filtros efetivamente aplicados e descarta seleção/resultados ao trocar empresa. Moeda e período são encaminhados ao motor; a tela explica que datas se aplicam a pedidos/títulos/movimentações e moeda a produtos/pedidos/títulos/saldos. O código da moeda não converte valores. Datas inválidas ou invertidas são recusadas.
+A tela **Registros das empresas** mantém o contexto vermelho e a identificação da empresa, lista paginada, seleção do tipo e campos principais do registro. Mostra os filtros efetivamente aplicados e descarta seleção/resultados ao trocar empresa. Moeda e período são encaminhados ao motor; a tela explica as datas usadas por tipo, a autoria registrada e a moeda dos registros. O código da moeda não converte valores. Datas inválidas ou invertidas são recusadas.
 
 Pedidos consultam detalhes por ID e mostram itens, atendimentos e títulos vinculados. Títulos mostram pagamentos, autores e informações de estorno disponíveis. As chamadas de detalhe exigem ID e a interface verifica ID/empresa da resposta. Fechar ou trocar empresa aborta a consulta; respostas antigas são descartadas. Campos são apresentados com rótulos, sem editor de SQL ou JSON.
 
-Faltam filtros por autor e ID em todas as listas, período nos demais tipos, detalhamento das linhas de atendimento e relações de outros módulos, auditoria da conclusão/falha correlacionada entre bancos e correções nos demais tipos de registro, inativações e estornos administrativos. A correção cadastral de produtos está descrita acima. Também falta a verificação ponta a ponta com identidade real e banco empresarial provisionado. Essa etapa não conclui o item 9 do script.
+Faltam detalhamento das linhas de atendimento e relações de outros módulos, auditoria da conclusão/falha correlacionada entre bancos e correções nos demais tipos de registro, inativações e estornos administrativos. A correção cadastral de produtos está descrita acima. Também falta a verificação ponta a ponta com identidade real e banco empresarial provisionado. Essa etapa não conclui o item 9 do script.
 
 Revisão de navegador com componente real e API fictícia: primeira/segunda página, campos selecionados, troca de empresa com limpeza de seleção e estado vazio; sem erros de console observados. Não representa validação dos dados reais nem de MFA.
 

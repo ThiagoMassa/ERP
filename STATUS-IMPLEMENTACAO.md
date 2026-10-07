@@ -1,4 +1,4 @@
-# Estado da implementação — 04/10/2026
+# Estado da implementação — 07/10/2026
 
 Esta revisão está em desenvolvimento. Não confundir a compilação local com a versão publicada na Railway.
 
@@ -24,6 +24,8 @@ Esta revisão está em desenvolvimento. Não confundir a compilação local com 
 - O segundo fator da conta inicial ainda precisa ser cadastrado pelo titular pelo fluxo `/admin`.
 
 ## Código local e testes
+
+- Consulta administrativa ampliada: ID e autor registrado em todas as listas, período aplicado também aos cadastros, texto/moeda em movimentações e auditoria de leitura concluída. Contagem e paginação filtram no banco na mesma consulta. Datas e autoria têm significado explícito por tipo; não se presume autoria pelo proprietário. Migração empresarial incremental 010, sem alteração de fontes instaladas. Build, TypeScript, lint, API/executor/DOM e [Linux com PostgreSQL real 37660968562](https://github.com/ThiagoMassa/ERP/actions/runs/37660968562) aprovados, incluindo backup/restauração. Ainda não publicado nem aplicado em bancos de produção. Escopo e limites em ADMIN-RECORDS.md.
 
 - Painel principal ampliado com total de empresas, contas ativas/bloqueadas/suspensas/pendentes e alertas reais registrados. A soma das categorias de usuários fecha com o total e o alcance global é explícito. Alertas mostram empresa/operação/correlação sem detalhes privados do driver ou notas. A [execução Linux 37196468985](https://github.com/ThiagoMassa/ERP/actions/runs/37196468985), commit `43683ddc6a704ee9fa8b4dcb9492e04bd5814cc5`, passou contas com restrições, contagens, eventos, privilégios e regressões de provisionamento/correções/backup/restauração. Build, TypeScript e lint aprovados. Frontend publicado e sessão real ainda pendentes. Alcance em `ADMIN-OVERVIEW.md`.
 

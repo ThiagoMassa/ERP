@@ -15,6 +15,8 @@ O banco Supabase central mantém autenticação, empresas, vínculos, permissõe
 
 ### Situação do projeto atual em 03/10/2026
 
+Reverificação em 07/10/2026, após a confirmação do titular: o destino continua sendo este projeto Supabase. As consultas somente de leitura aos catálogos confirmaram apenas `postgres`, `template0` e `template1`; ainda não há banco empresarial criado. `postgres` e `template1` continuam com CONNECT para PUBLIC. A conexão disponível possui CREATEDB/CREATEROLE, não é superusuário e não pertence a `supabase_admin`. Portanto, o impedimento de isolamento descrito abaixo permanece. Nenhum banco, privilégio ou segredo foi alterado nesta verificação. O comando de diagnóstico `scripts/preflight-tenant.mjs --help` também foi validado sem depender de pg_dump local; isso não representa execução do backup nem teste de conexão do operador de produção.
+
 O titular escolheu reutilizar o Supabase atual, projeto `kbqzwdttqptttoceygkd`, organização Phaxe Solutions. Nenhum PostgreSQL adicional foi criado na Railway. A Railway tem somente o frontend; não há operador de backup nem volume persistente configurado.
 
 O inventário remoto confirmou que `postgres` possui CREATEDB/CREATEROLE, mas não SUPERUSER. `postgres` e `template1` permitem conexão por `PUBLIC`; `template1` pertence a `supabase_admin`, cujo papel não pode ser assumido pela conexão disponível. Por isso, criar bancos e usuários novos não basta para passar a regra de isolamento atual: as credenciais ainda herdariam conexão a outras bases. Não foram alterados os privilégios dos serviços internos, e a verificação de isolamento continua obrigatória.
