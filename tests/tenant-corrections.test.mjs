@@ -145,6 +145,23 @@ try{
  assert.equal(secondPage.count,allProducts.count);assert.ok(secondPage.rows.length<=1);
  assert.equal((await search('products',{id:item.id,status:'archived'})).count,1);
  assert.equal((await search('products',{id:item.id,status:'active'})).count,0);
+ for(const [operation,id] of [['partners',partner.id],['orders',order.id],['printers',printer],['spools',spool],['jobs',job]]){
+  assert.equal((await search(operation,{id,start:today,end:today})).count,1);
+  assert.equal((await search(operation,{id,start:'2000-01-01',end:'2000-01-01'})).count,0);
+ }
+ // Direct maintenance fixtures have no recorded author; do not infer the owner.
+ assert.equal((await search('printers',{id:printer,actor:author})).count,0);
+ assert.equal((await search('partners',{id:partner.id,actor:adm})).count,1);
+ await call('stock.adjust',{product_id:product.id,warehouse_id:warehouse,quantity:2,reason:'Saldo para consulta administrativa'});
+ const stockPage=await search('stock',{id:product.id,actor:adm,start:today,end:today});
+ assert.equal(stockPage.count,1);assert.equal(stockPage.rows[0].product_id,product.id);
+ // Business dates must win over created_at for orders and financial titles.
+ await db`update public.erp_orders set date='2000-01-01' where id=${order.id}`;
+ assert.equal((await search('orders',{id:order.id,start:today,end:today})).count,0);
+ assert.equal((await search('orders',{id:order.id,start:'2000-01-01',end:'2000-01-01'})).count,1);
+ const titleId=(await db`insert into public.erp_titles(business_id,description,type,currency,amount,competence_date,due_date) values(${ids[0]},'Título de consulta','income','BRL',10,current_date,'2000-01-01') returning id`)[0].id;
+ assert.equal((await search('titles',{id:titleId,start:today,end:today})).count,0);
+ assert.equal((await search('titles',{id:titleId,start:'2000-01-01',end:'2000-01-01'})).count,1);
  for(const operation of ['partners','orders','titles','stock','movements','jobs','spools','printers','recipes']){
   const response=await search(operation,{size:1});assert.ok(Array.isArray(response.rows));
   assert.equal((await search(operation,{id:randomUUID(),actor:randomUUID(),start:today,end:today})).count,0);
@@ -160,7 +177,7 @@ try{
  await db`update tenant.identity set operational_state='maintenance'`;
  await assert.rejects(call('admin.product.correct',data,key),e=>e.code==='55000');
  assert.equal((await maintenance[1]`select count(*)::int n from public.products`)[0].n,0);
- console.log('PASS: correção de metadados com autoria preservada, auditoria antes/depois, concorrência real, repetição idempotente, permissões antes da repetição, rollback integral e isolamento entre bancos. Contextos administrativos simulados; sem validação central/MFA.');
+ console.log('PASS: filtros administrativos por ID/autor/período antes da paginação, datas de pedido/vencimento, autoria ausente, busca de movimentos, auditoria de leitura; correção de metadados com autoria preservada, auditoria antes/depois, concorrência real, repetição idempotente, permissões antes da repetição, rollback integral e isolamento entre bancos. Contextos administrativos simulados; sem validação central/MFA.');
 }finally{
  await Promise.all(opened.map(sql=>sql.end({timeout:1})));
  for(const f of fixtures){await admin.unsafe(`drop database if exists "${f.database}" with (force)`);await admin.unsafe(`drop role if exists "${f.runtime}"`);await admin.unsafe(`drop role if exists "${f.owner}"`);}
