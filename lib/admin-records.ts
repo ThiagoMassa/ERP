@@ -6,7 +6,8 @@ export const adminProductCorrection=z.object({
  }).strict(),
 }).strict();
 export const adminProductStatus=z.object({company:z.string().uuid(),operation:z.enum(['admin.product.archive','admin.product.restore']),key:z.string().uuid(),data:z.object({id:z.string().uuid(),version:z.number().int().min(1).max(2147483647),reason:z.string().trim().min(10).max(1000)}).strict()}).strict();
-export const adminRecordMutation=z.union([adminProductCorrection,adminProductStatus]);
+export const adminCancellation=adminProductStatus.extend({operation:z.enum(['admin.order.cancel','admin.title.cancel'])});
+export const adminRecordMutation=z.union([adminProductCorrection,adminProductStatus,adminCancellation]);
 export const adminRecordOperations=['products','partners','orders','order_detail','titles','title_detail','stock','movements','jobs','spools','printers','recipes'] as const;
 const date=z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(v=>{const d=new Date(v+'T00:00:00Z');return Number.isFinite(d.getTime())&&d.toISOString().slice(0,10)===v});
 const recordQuery=z.object({company:z.string().uuid(),operation:z.enum(adminRecordOperations),filters:z.object({status:z.enum(['active','archived']).optional(),query:z.string().max(160).optional(),id:z.string().uuid().optional(),actor:z.string().uuid().optional(),page:z.number().int().min(0).max(100000).default(0),size:z.number().int().min(1).max(50).default(20),kind:z.enum(['sale','purchase','quote']).optional(),currency:z.string().regex(/^[A-Z]{3}$/).optional(),start:date.optional(),end:date.optional()}).strict().refine(v=>!v.start&&!v.end||!!v.start&&!!v.end&&v.start<=v.end&&Date.parse(v.end)-Date.parse(v.start)<=3660*86400000,{message:'Informe um período válido.'}).default({})}).strict().refine(v=>!['order_detail','title_detail'].includes(v.operation)||!!v.filters.id,{message:'Informe o identificador do registro.'});

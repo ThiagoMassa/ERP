@@ -2,7 +2,7 @@
 import {useEffect,useRef,useState} from 'react';
 import type {SupabaseClient} from '@supabase/supabase-js';
 import {Database,Search,ChevronLeft,ChevronRight} from 'lucide-react';
-import {adminRecordRequest,adminHistoryRequest,adminRecordMutation} from '@/lib/admin-records';
+import {adminRecordRequest,adminHistoryRequest,adminRecordMutation,adminCancellation} from '@/lib/admin-records';
 import {rows,str,num,type Row} from '@/lib/operations';
 import {z} from 'zod';
 
@@ -41,7 +41,7 @@ export function AdminRecords({db,company,companyName,onReauth}:{db:SupabaseClien
    {records.length?<div className="op-table-scroll"><table className="op-table"><thead><tr><th>Registro</th><th>Situação / tipo</th><th>Moeda</th><th>Consulta</th></tr></thead><tbody>{records.map((r,i)=><tr key={str(r.id)||[r.product_id,r.warehouse_id,i].join(':')}><td>{str(r.name||r.description||r.partner_name)||'Sem descrição'}<small>{str(r.id||r.product_id)}</small></td><td>{str(r.status||r.kind||r.type)||'—'}</td><td>{str(r.currency)||'—'}</td><td><button className="op-small-button" onClick={()=>setSelected(r)}>Ver campos</button></td></tr>)}</tbody></table></div>:<p>Nenhum registro corresponde aos filtros aplicados.</p>}
    <div className="op-form-footer"><span>{count} registros · página {query.page+1}</span><button className="op-small-button" disabled={!query.page} onClick={()=>change({...query,page:query.page-1})}><ChevronLeft size={16}/>Anterior</button><button className="op-small-button" disabled={(query.page+1)*20>=count} onClick={()=>change({...query,page:query.page+1})}>Próxima<ChevronRight size={16}/></button></div>
   </>}
-  {selected?<aside className="adm-record-detail" aria-label="Campos do registro"><h3>Campos do registro · {companyName||company}</h3><RecordDetails key={[company,query.operation,selected.id,selected.product_id,selected.warehouse_id].join(':')} db={db} company={company} operation={query.operation} record={selected}/>{query.operation==='products'?<ProductCorrection key={[company,selected.id,selected.record_version].join(':')} db={db} company={company} companyName={companyName} record={selected} onReauth={onReauth} onSaved={()=>{change({...query});setNotice('Alteração registrada. A justificativa e os valores anteriores estão no histórico da empresa.')}}/>:null}{z.string().uuid().safeParse(selected.id).success?<RecordHistory key={[company,selected.id].join(':')} db={db} company={company} id={str(selected.id)}/>:null}<button className="op-small-button" onClick={()=>setSelected(null)}>Fechar campos</button></aside>:null}
+  {selected?<aside className="adm-record-detail" aria-label="Campos do registro"><h3>Campos do registro · {companyName||company}</h3><RecordDetails key={[company,query.operation,selected.id,selected.product_id,selected.warehouse_id].join(':')} db={db} company={company} operation={query.operation} record={selected}/>{query.operation==='products'?<ProductCorrection key={[company,selected.id,selected.record_version].join(':')} db={db} company={company} companyName={companyName} record={selected} onReauth={onReauth} onSaved={()=>{change({...query});setNotice('Alteração registrada. A justificativa e os valores anteriores estão no histórico da empresa.')}}/>:null}{['orders','titles'].includes(query.operation)?<AdministrativeCancellation key={[company,selected.id,selected.record_version].join(':')} db={db} company={company} operation={query.operation} record={selected} onReauth={onReauth} onSaved={()=>{change({...query});setNotice('Cancelamento registrado com justificativa e histórico preservado.')}}/>:null}{z.string().uuid().safeParse(selected.id).success?<RecordHistory key={[company,selected.id].join(':')} db={db} company={company} id={str(selected.id)}/>:null}<button className="op-small-button" onClick={()=>setSelected(null)}>Fechar campos</button></aside>:null}
  </section>;
 }
 
@@ -99,6 +99,30 @@ function ProductCorrection({db,company,companyName,record,onReauth,onSaved}:{db:
   {error?<p role="alert" className="op-error">{error}</p>:null}
   <form hidden={!!prepared} onSubmit={e=>{e.preventDefault();review(e.currentTarget)}}><div className="adm-audit-filters">{!statusMode&&Object.entries(editableProductFields).map(([key,label])=><label key={key}>{label}{key==='description'?<textarea name={key} defaultValue={str(record[key])} maxLength={2000}/>:<input name={key} defaultValue={str(record[key])} maxLength={key==='name'?160:240} required={key==='name'||key==='category'}/>}</label>)}</div><label>Justificativa<textarea name="reason" minLength={10} maxLength={1000} required placeholder="Explique por que esta correção é necessária."/></label><button className="primary">Revisar alterações</button></form>
   {prepared?<><h4>Confira antes de salvar</h4><div className="op-table-scroll"><table className="op-table"><thead><tr><th>Campo</th><th>Antes</th><th>Depois</th></tr></thead><tbody>{'patch' in prepared.data?Object.entries(prepared.data.patch).map(([key,value])=><tr key={key}><th>{editableProductFields[key as keyof typeof editableProductFields]}</th><td>{str(record[key])||'—'}</td><td>{value||'—'}</td></tr>):<tr><th>Situação</th><td>{record.deleted_at?'Inativo':'Ativo'}</td><td>{record.deleted_at?'Ativo':'Inativo'}</td></tr>}</tbody></table></div><p>Justificativa: {prepared.data.reason}</p><p>Para salvar, confirme sua identidade com o segundo fator nos últimos cinco minutos. Se o produto mudou, atualize a consulta e refaça a revisão.</p><div className="op-form-footer"><button className="op-small-button" disabled={busy} onClick={()=>setPrepared(null)}>Voltar aos campos</button>{onReauth?<button className="op-small-button" disabled={busy} onClick={onReauth}>Confirmar identidade</button>:null}<button className="primary" disabled={busy} onClick={()=>void save()}>{busy?'Salvando…':statusMode?'Confirmar situação':'Confirmar correção'}</button></div></>:null}
+ </section>;
+}
+
+function AdministrativeCancellation({db,company,operation,record,onSaved,onReauth}:{db:SupabaseClient;company:string;operation:string;record:Row;onSaved:()=>void;onReauth?:()=>void}){
+ const [open,setOpen]=useState(false),[prepared,setPrepared]=useState<z.infer<typeof adminCancellation>|null>(null),[error,setError]=useState(''),[busy,setBusy]=useState(false);
+ const request=useRef<AbortController|null>(null),saving=useRef(false);
+ useEffect(()=>()=>request.current?.abort(),[]);
+ const eligible=operation==='orders'?['draft','confirmed'].includes(str(record.status)):operation==='titles'&&!record.order_id&&!record.cancelled_at&&num(record.paid)===0;
+ if(!eligible||!Number.isInteger(record.record_version))return null;
+ async function save(){
+  if(!prepared||saving.current)return;saving.current=true;setBusy(true);setError('');const controller=new AbortController();request.current=controller;
+  try{
+   const {data}=await db.auth.getSession();if(!data.session)throw Error('Entre na conta administrativa.');if(controller.signal.aborted)return;
+   const response=await fetch('/api/admin/records',{method:'PATCH',headers:{Authorization:'Bearer '+data.session.access_token,'Content-Type':'application/json'},body:JSON.stringify(prepared),signal:controller.signal});
+   const payload=z.object({error:z.string().optional(),data:z.object({id:z.string().uuid(),version:z.number().int(),correlation:z.string().uuid()}).optional()}).parse(await response.json());
+   if(!response.ok)throw Error(payload.error||'Cancelamento não concluído.');
+   if(payload.data?.id!==record.id||payload.data?.correlation!==prepared.key)throw Error('Resposta inesperada. Atualize a consulta para conferir o documento.');
+   if(!controller.signal.aborted)onSaved();
+  }catch(e){if(!controller.signal.aborted)setError(e instanceof Error?e.message:'Cancelamento não concluído.')}
+  finally{saving.current=false;if(!controller.signal.aborted)setBusy(false)}
+ }
+ if(!open)return <button className="op-small-button" onClick={()=>setOpen(true)}>{operation==='orders'?'Cancelar pedido':'Cancelar título avulso'}</button>;
+ return <section aria-label="Cancelamento administrativo"><h4>Cancelar documento</h4><p>Empresa: {company} · Documento: {str(record.id)} · Versão: {num(record.record_version)}</p><p>{operation==='orders'?'O cancelamento também cancela os títulos do pedido. Atendimentos, pagamentos ou produção pendentes precisam ser resolvidos antes.':'O cancelamento retira este título avulso das pendências financeiras. Títulos de pedidos devem ser cancelados pelo documento de origem.'} O registro e seu histórico são preservados.</p>{error?<p role="alert" className="op-error">{error}</p>:null}
+  {!prepared?<form onSubmit={e=>{e.preventDefault();const reason=new FormData(e.currentTarget).get('reason');const parsed=adminCancellation.safeParse({company,operation:operation==='orders'?'admin.order.cancel':'admin.title.cancel',key:crypto.randomUUID(),data:{id:record.id,version:record.record_version,reason}});if(!parsed.success){setError('Informe uma justificativa de 10 a 1.000 caracteres.');return}setError('');setPrepared(parsed.data)}}><label>Justificativa do cancelamento<textarea name="reason" minLength={10} maxLength={1000} required/></label><button className="primary">Revisar cancelamento</button></form>:<><p>Justificativa: {prepared.data.reason}</p><p>Confira o documento e confirme sua identidade com o segundo fator nos últimos cinco minutos.</p><div className="op-form-footer"><button disabled={busy} onClick={()=>setPrepared(null)}>Voltar à justificativa</button>{onReauth?<button disabled={busy} onClick={onReauth}>Confirmar identidade</button>:null}<button className="primary" disabled={busy} onClick={()=>void save()}>{busy?'Cancelando…':'Confirmar cancelamento'}</button></div></>}
  </section>;
 }
 

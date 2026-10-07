@@ -175,7 +175,7 @@ try{
  for(const filters of [{size:51},{start:today},{page:-1},{actor:'invalid'},{start:'2000-01-01',end:'2050-01-01'}])await assert.rejects(search('products',filters));
  assert.ok((await db`select count(*)::int n from tenant.audit where action='records.read' and correlation_id=${readCorrelation}`)[0].n>0);
  // Real fulfillment and reversal must remain traceable from the order details.
- const detailedOrder=await call('order.save',{kind:'sale',partner_id:partner.id,currency:'BRL',date:today,due_date:today,installments:1,interval_days:30,items:[{product_id:product.id,quantity:1,price:20,discount:0}]});
+ const detailedOrder=await call('order.save',{kind:'sale',partner_id:partner.id,currency:'BRL',date:today,due_date:today,installments:1,interval_days:30,items:[{product_id:product.id,quantity:2,price:20,discount:0}]},randomUUID(),context(0,author));
  await call('order.confirm',{id:detailedOrder.id});
  const detailLine=(await db`select id from public.erp_order_lines where order_id=${detailedOrder.id}`)[0].id;
  const delivered=await call('order.fulfill',{id:detailedOrder.id,warehouse_id:warehouse,date:today,items:[{line_id:detailLine,quantity:1}]});
@@ -186,6 +186,7 @@ try{
  assert.equal(detail.fulfillment_items.length,1);assert.equal(detail.fulfillment_items[0].fulfillment_id,delivered.fulfillment_id);assert.equal(detail.fulfillment_items[0].product_id,product.id);assert.equal(detail.fulfillment_items[0].quantity,1);
  assert.equal(detail.stock_movements.length,1);assert.equal(detail.stock_movements[0].delta,-1);assert.equal(detail.stock_movements[0].source_id,delivered.fulfillment_id);
  assert.equal(detail.titles.length,1);assert.equal(detail.payments.length,1);assert.equal(detail.payments[0].id,payment.id);assert.equal(detail.payments[0].title_id,paymentTitle);
+ await assert.rejects(call('admin.order.cancel',{id:detailedOrder.id,version:detail.record_version,reason:'Cancelamento bloqueado por dependências'},randomUUID(),{...context(),admin_action:'admin.order.cancel'}),/Estorne/);
  const detailedTitle=await search('title_detail',{id:detail.titles[0].id});assert.equal(detailedTitle.orders[0].id,detailedOrder.id);assert.deepEqual(detailedTitle.fulfillments,[]);
  await call('payment.reverse',{id:payment.id,reason:'Estorno para conferir rastreabilidade'});
  await call('fulfillment.reverse',{id:delivered.fulfillment_id,reason:'Devolução para conferir rastreabilidade'});
@@ -197,6 +198,23 @@ try{
  await assert.rejects(search('order_detail',{id:detailedOrder.id},{permissions:noFinance}),e=>e.code==='42501');
  await assert.rejects(search('order_detail',{id:detailedOrder.id},{...context(1),administrative_read:true},runtime[1]),/indisponível/);
  assert.equal((await db`select count(*)::int n from tenant.audit where action='records.detail' and entity=${detailedOrder.id} and correlation_id=${readCorrelation}`)[0].n,2);
+ const cancelDoc=(op,id,version,key=randomUUID(),ctx={},sql=runtime[0])=>call(op,{id,version,reason:'Cancelamento administrativo documentado'},key,{...context(),admin_action:op,...ctx},sql);
+ const orderVersion=(await db`select record_version from public.erp_orders where id=${detailedOrder.id}`)[0].record_version;
+ await assert.rejects(cancelDoc('admin.order.cancel',detailedOrder.id,orderVersion-1),e=>e.code==='40001');
+ const cancelKey=randomUUID();const cancelled=await cancelDoc('admin.order.cancel',detailedOrder.id,orderVersion,cancelKey);
+ assert.equal(cancelled.version,orderVersion+1);assert.deepEqual(await cancelDoc('admin.order.cancel',detailedOrder.id,orderVersion,cancelKey),cancelled);
+ const cancellationEvent=(await db`select * from tenant.audit where correlation_id=${cancelKey}`)[0];assert.equal(cancellationEvent.before_data.status,'confirmed');assert.equal(cancellationEvent.after_data.status,'cancelled');assert.equal(cancellationEvent.subject_id,author);assert.ok(cancellationEvent.after_data.titles.every(t=>t.cancelled_at));assert.ok(cancellationEvent.before_data.titles.every(t=>!t.cancelled_at));
+ await assert.rejects(cancelDoc('admin.order.cancel',detailedOrder.id,orderVersion,cancelKey,{administrative:false}),e=>e.code==='42501');
+ const blockedCancel=structuredClone(permissions);blockedCancel.sales.cancel.allowed=false;
+ await assert.rejects(cancelDoc('admin.order.cancel',detailedOrder.id,orderVersion,cancelKey,{permissions:blockedCancel}),e=>e.code==='42501');
+ await assert.rejects(cancelDoc('admin.title.cancel',paymentTitle,(await db`select record_version from public.erp_titles where id=${paymentTitle}`)[0].record_version),/pedido de origem/);
+ await db.unsafe("create function tenant.reject_cancel_audit() returns trigger language plpgsql as $$begin if new.action='admin.title.cancel' then raise exception 'fixture cancellation audit failure';end if;return new;end$$;create trigger reject_cancel_audit before insert on tenant.audit for each row execute function tenant.reject_cancel_audit()");
+ const titleCancelKey=randomUUID();await assert.rejects(cancelDoc('admin.title.cancel',titleId,1,titleCancelKey),/fixture cancellation audit failure/);
+ assert.equal((await db`select cancelled_at from public.erp_titles where id=${titleId}`)[0].cancelled_at,null);assert.equal((await db`select count(*)::int n from erp_private.requests where key=${titleCancelKey}`)[0].n,0);
+ await db.unsafe('drop trigger reject_cancel_audit on tenant.audit;drop function tenant.reject_cancel_audit()');
+ const concurrentCancels=await Promise.allSettled([runtime[0],peer].map(sql=>cancelDoc('admin.title.cancel',titleId,1,randomUUID(),{},sql)));
+ assert.equal(concurrentCancels.filter(r=>r.status==='fulfilled').length,1);assert.equal(concurrentCancels.find(r=>r.status==='rejected').reason.code,'40001');
+ await assert.rejects(cancelDoc('admin.title.cancel',titleId,1,randomUUID(),context(1),runtime[1]),/não encontrado/);
  await db`update tenant.identity set operational_state='maintenance'`;
  await assert.rejects(call('admin.product.correct',data,key),e=>e.code==='55000');
  assert.equal((await maintenance[1]`select count(*)::int n from public.products`)[0].n,0);

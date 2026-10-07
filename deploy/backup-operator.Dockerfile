@@ -33,7 +33,7 @@ COPY tests/tenant-backup.test.mjs tests/tenant-corrections.test.mjs tests/admin-
 COPY tests/tenant-preflight.test.mjs ./tests/
 COPY tests/tenant-manual-provision.test.mjs ./tests/
 COPY db/admin-control.sql db/tenant-routing.sql db/tenant-backup-control.sql db/admin-records.sql db/admin-corrections.sql ./db/
-COPY db/admin-product-status.sql ./db/
+COPY db/admin-product-status.sql db/admin-cancellations.sql ./db/
 COPY db/admin-company-directory.sql ./db/
 COPY db/admin-overview.sql ./db/
 COPY tests/helpers/pg-tools.mjs ./tests/helpers/
