@@ -214,7 +214,8 @@ try{
  await db.unsafe('drop trigger reject_cancel_audit on tenant.audit;drop function tenant.reject_cancel_audit()');
  const concurrentCancels=await Promise.allSettled([runtime[0],peer].map(sql=>cancelDoc('admin.title.cancel',titleId,1,randomUUID(),{},sql)));
  assert.equal(concurrentCancels.filter(r=>r.status==='fulfilled').length,1);assert.equal(concurrentCancels.find(r=>r.status==='rejected').reason.code,'40001');
- await assert.rejects(cancelDoc('admin.title.cancel',titleId,1,randomUUID(),context(1),runtime[1]),/não encontrado/);
+ await assert.rejects(cancelDoc('admin.title.cancel',titleId,1,randomUUID(),context(1),runtime[1]),e=>e.code==='42501');
+ await assert.rejects(cancelDoc('admin.title.cancel',titleId,1,randomUUID(),{...context(1),admin_action:'admin.title.cancel'},runtime[1]),/não encontrado/);
  await db`update tenant.identity set operational_state='maintenance'`;
  await assert.rejects(call('admin.product.correct',data,key),e=>e.code==='55000');
  assert.equal((await maintenance[1]`select count(*)::int n from public.products`)[0].n,0);
