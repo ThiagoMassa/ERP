@@ -1,8 +1,10 @@
-# Estado da implementação — 07/10/2026
+# Estado da implementação — 08/10/2026
 
 Esta revisão está em desenvolvimento. Não confundir a compilação local com a versão publicada na Railway.
 
 ## Aplicado no Supabase central
+
+- Migração 20261008192234_admin_document_cancellation_context: autorização central para cancelar pedidos e títulos avulsos com ADM/MFA recente, justificativa e escopo restrito. Recusa sem sessão e privilégios conferidos após instalação; advisor sem novos avisos. Nenhum cancelamento real de produção executado.
 
 - Migração `20261004104831_admin_overview_metrics_alerts`: totais exclusivos de contas ativas, pendentes, bloqueadas e suspensas, incluindo banimentos vigentes do Auth; resumos de falhas de provisionamento/manutenção e eventos negados/falhos em 24 horas. Privilégios e rejeição sem sessão conferidos; advisor sem novos avisos. Não altera cadastros nem substitui a coleta completa de eventos de autenticação.
 
@@ -24,6 +26,8 @@ Esta revisão está em desenvolvimento. Não confundir a compilação local com 
 - O segundo fator da conta inicial ainda precisa ser cadastrado pelo titular pelo fluxo `/admin`.
 
 ## Código local e testes
+
+- Cancelamento administrativo integrado à consulta de pedidos/títulos: revisão, motivo, versão, reautenticação, repetição com mesma chave e auditoria transacional antes/depois. A migração empresarial 012 delega às regras operacionais e registra também os títulos afetados pelo pedido. [Linux 37831237967](https://github.com/ThiagoMassa/ERP/actions/runs/37831237967) passou dependências, concorrência, rollback, isolamento e backup/restauração. Build, TypeScript, lint, API/executor/DOM aprovados. Banco empresarial, frontend e sessão real pendentes. Estornos administrativos e correções de outros cadastros ainda em desenvolvimento.
 
 - Detalhamento administrativo de pedidos agora reúne itens por atendimento, estoque vinculado e pagamentos/estornos; títulos mostram documento e atendimento de origem. Migração empresarial 011 confere permissões das áreas relacionadas, mantém contexto empresarial e audita a consulta concluída. [Linux 37661568602](https://github.com/ThiagoMassa/ERP/actions/runs/37661568602) passou operações e estornos reais, vínculos, acesso negado, banco divergente e recuperação com a migração. Build, TypeScript, lint e DOM aprovados. Ainda pendentes publicação, bancos empresariais e sessão real. Outros tipos de registro e ações administrativas continuam em desenvolvimento.
 

@@ -1,5 +1,11 @@
 # Registro de implantação central — 03/10/2026
 
+## Atualização em 08/10/2026
+
+Migração **20261008192234_admin_document_cancellation_context**, aplicada e conferida no histórico remoto. Fonte `db/admin-cancellations.sql`; SHA-256 `dee4e53f7c63cc4f67be2205dac648630f81bc62a40a109839305fe9524d01d7`. Amplia a autorização existente para cancelamento administrativo de pedidos e títulos avulsos, com ADM/MFA recente, justificativa e somente as permissões necessárias. Preservar esta fonte instalada; futuras mudanças exigem nova migração.
+
+Depois da aplicação, as duas operações foram recusadas sem sessão em transação revertida. RPC pública permanece SECURITY INVOKER, EXECUTE negado a anon, permitido a authenticated com autorização interna; função privada também nega anon. Advisor não apresentou novos avisos: continuam nove informativos de RLS sem política nas tabelas privadas e o aviso de proteção contra senhas vazadas desativada. Nenhum documento de produção foi cancelado. A migração empresarial 012, bancos exclusivos e frontend ainda aguardam implantação; testes positivos usaram o cluster Linux descartável, sem simular MFA na conta real.
+
 ## Atualização em 04/10/2026
 
 Migração **20261004104831_admin_overview_metrics_alerts**, aplicada e conferida no histórico remoto. Fonte `db/admin-overview.sql`; SHA-256 `d61770a025de285637858d3c1f2c61f27b428097292edcafaf828e33d0affe5b`. Completa a classificação de contas e os resumos de falhas registradas. RPC pública permanece SECURITY INVOKER; função privada nega EXECUTE a anon e exige ADM/AAL2 por meio do leitor existente. Chamadas sem sessão foram recusadas após instalação. Advisor mantém os avisos anteriores. Nenhuma conta, vínculo, empresa ou solicitação foi alterada pela implantação. Preservar a fonte instalada.
