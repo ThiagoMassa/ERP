@@ -5,6 +5,7 @@ const nextConfig: NextConfig = {
     '/api/erp': ['./db/tenant/*.sql'],
     '/api/erp/files': ['./db/tenant/*.sql'],
     '/api/admin/database': ['./db/tenant/*.sql'],
+    '/api/admin/records': ['./db/tenant/*.sql'],
   },
 };
 
