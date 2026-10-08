@@ -1,0 +1,82 @@
+name: Backup and recovery on Linux
+on:
+  push:
+    branches: [codex/erp-operations-admin]
+    paths:
+      - 'deploy/backup-operator.*'
+      - 'package*.json'
+      - 'components/erp/admin-records.tsx'
+      - 'lib/admin-records.ts'
+      - 'app/api/admin/records/**'
+      - 'next.config.ts'
+      - 'tests/admin-record-details.test.mjs'
+      - 'tests/admin-record-routes.test.mjs'
+      - 'tests/admin-correction-executor.test.mjs'
+      - 'lib/server/tenant-*.ts'
+      - 'lib/server/operator-connection.ts'
+      - 'scripts/preflight-tenant.mjs'
+      - 'scripts/provision-tenant.mjs'
+      - 'tests/tenant-preflight.test.mjs'
+      - 'tests/tenant-manual-provision.test.mjs'
+      - 'db/tenant/**'
+      - 'db/admin-records.sql'
+      - 'db/admin-corrections.sql'
+      - 'db/admin-product-status.sql'
+      - 'db/admin-cancellations.sql'
+      - 'db/admin-payment-reversal.sql'
+      - 'db/admin-company-directory.sql'
+      - 'db/admin-overview.sql'
+      - 'tests/admin-records.test.mjs'
+      - 'tests/tenant-backup.test.mjs'
+      - 'tests/tenant-corrections.test.mjs'
+      - 'tests/linux-backup-runner.mjs'
+      - 'tests/helpers/pg-tools.mjs'
+      - '.github/workflows/backup-linux.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      NEXT_TELEMETRY_DISABLED: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Verify administrative interface and API boundaries
+        run: |
+          node --experimental-strip-types tests/admin-record-routes.test.mjs
+          node --experimental-strip-types tests/admin-record-details.test.mjs
+          node --experimental-strip-types tests/admin-correction-executor.test.mjs
+          npx eslint components/erp/admin-records.tsx lib/admin-records.ts lib/server/tenant-request.ts lib/server/tenant-database.ts
+      - name: Build application
+        run: npm run build
+      - name: Verify administrative route includes tenant migrations
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import {readFileSync,readdirSync} from 'node:fs';
+          import {resolve,dirname} from 'node:path';
+          const manifest=resolve('.next/server/app/api/admin/records/route.js.nft.json');
+          const included=new Set(JSON.parse(readFileSync(manifest,'utf8')).files.map(file=>resolve(dirname(manifest),file)));
+          for(const file of readdirSync('db/tenant').filter(file=>file.endsWith('.sql')))assert.ok(included.has(resolve('db/tenant',file)),`Missing tenant migration: ${file}`);
+          NODE
+  recovery:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build isolated Linux verification image
+        run: docker build --target verification -f deploy/backup-operator.Dockerfile -t erp-backup-verification .
+      - name: Test real backups and recovery without production access
+        run: docker run --rm --network none erp-backup-verification
+      - name: Build production operator and check CLI
+        run: |
+          docker build --target production -f deploy/backup-operator.Dockerfile -t erp-backup-operator .
+          docker run --rm --network none erp-backup-operator --help
+          docker run --rm --network none --entrypoint node erp-backup-operator --experimental-strip-types scripts/preflight-tenant.mjs --help

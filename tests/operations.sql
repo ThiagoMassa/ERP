@@ -1,0 +1,65 @@
+-- Run after the v2 schema inside BEGIN/ROLLBACK. No fixture survives.
+do $$
+declare u uuid:=gen_random_uuid(); other_u uuid:=gen_random_uuid(); b uuid; partner uuid; prod uuid; purchase uuid; sale uuid; wid uuid; aid uuid;
+ request_id uuid:=gen_random_uuid(); result jsonb; detail jsonb; fid uuid; tid uuid; payment uuid; n numeric; denied boolean; sid uuid; printer uuid; job uuid; output_id uuid; op_session uuid:=gen_random_uuid(); other_session uuid:=gen_random_uuid();
+begin
+ insert into auth.users(id,email) values(u,'erp-test-'||u||'@example.invalid'),(other_u,'erp-test-'||other_u||'@example.invalid');
+ insert into auth.sessions(id,user_id,created_at,aal) values(op_session,u,now(),'aal1'),(other_session,other_u,now(),'aal1');
+ perform set_config('request.jwt.claims',jsonb_build_object('sub',u,'session_id',op_session,'exp',floor(extract(epoch from now()+interval '1 hour')),'iat',floor(extract(epoch from now())),'aal','aal1')::text,true);
+ perform set_config('request.jwt.claim.sub',u::text,true);
+ result:=public.erp_command(null,'business.save','{"name":"Teste transacional","model":"printing"}',gen_random_uuid()); b:=(result->>'id')::uuid;
+ wid:=(public.erp_read(b,'lookups','{}')->'warehouses'->0->>'id')::uuid;
+ partner:=(public.erp_command(b,'partner.save','{"name":"Parceiro de teste","customer":true,"supplier":true}',gen_random_uuid())->>'id')::uuid;
+ prod:=(public.erp_command(b,'product.save','{"name":"Peça","sku":"TEST-1","unit":"un","item_type":"finished","cost":10,"price":30,"currency":"BRL","stock":0}',gen_random_uuid())->>'id')::uuid;
+ aid:=(public.erp_command(b,'account.save','{"name":"Banco teste","currency":"BRL","kind":"bank"}',gen_random_uuid())->>'id')::uuid;
+ result:=jsonb_build_object('kind','purchase','partner_id',partner,'currency','BRL','date',current_date,'due_date',current_date,'items',jsonb_build_array(jsonb_build_object('product_id',prod,'quantity',10,'price',10)));
+ purchase:=(public.erp_command(b,'order.save',result,gen_random_uuid())->>'id')::uuid;
+ perform public.erp_command(b,'order.confirm',jsonb_build_object('id',purchase),gen_random_uuid());
+ detail:=public.erp_read(b,'order_detail',jsonb_build_object('id',purchase));
+ result:=jsonb_build_object('id',purchase,'warehouse_id',wid,'items',jsonb_build_array(jsonb_build_object('line_id',detail->'items'->0->>'id','quantity',10)));
+ fid:=(public.erp_command(b,'order.fulfill',result,request_id)->>'fulfillment_id')::uuid;
+ perform public.erp_command(b,'order.fulfill',result,request_id);
+ if (select stock from public.products where id=prod)<>10 or (select count(*) from public.erp_titles where order_id=purchase)<>1 then raise exception 'FAIL compra/idempotência'; end if;
+ denied:=false; begin perform public.erp_command(b,'order.fulfill',result||'{"notes":"alterado"}',request_id); exception when others then denied:=true; end;
+ if not denied then raise exception 'FAIL chave reutilizada com payload diferente'; end if;
+ sale:=(public.erp_command(b,'order.save',jsonb_build_object('kind','sale','partner_id',partner,'currency','BRL','date',current_date,'due_date',current_date,'items',jsonb_build_array(jsonb_build_object('product_id',prod,'quantity',3,'price',30))),gen_random_uuid())->>'id')::uuid;
+ perform public.erp_command(b,'order.confirm',jsonb_build_object('id',sale),gen_random_uuid());
+ detail:=public.erp_read(b,'order_detail',jsonb_build_object('id',sale));
+ fid:=(public.erp_command(b,'order.fulfill',jsonb_build_object('id',sale,'warehouse_id',wid,'items',jsonb_build_array(jsonb_build_object('line_id',detail->'items'->0->>'id','quantity',3))),gen_random_uuid())->>'fulfillment_id')::uuid;
+ if (select stock from public.products where id=prod)<>7 then raise exception 'FAIL venda saldo 7'; end if;
+ tid:=(detail->'titles'->0->>'id')::uuid;
+ payment:=(public.erp_command(b,'payment.save',jsonb_build_object('title_id',tid,'account_id',aid,'amount',40,'date',current_date),gen_random_uuid())->>'id')::uuid;
+ if (select amount-paid from public.erp_titles where id=tid)<>50 then raise exception 'FAIL parcial saldo 50'; end if;
+ perform public.erp_command(b,'payment.reverse',jsonb_build_object('id',payment,'reason','Teste de estorno'),gen_random_uuid());
+ if (select paid from public.erp_titles where id=tid)<>0 or (select reversed_at from public.erp_payments where id=payment) is null then raise exception 'FAIL estorno financeiro'; end if;
+ perform public.erp_command(b,'fulfillment.reverse',jsonb_build_object('id',fid,'reason','Devolução de teste'),gen_random_uuid());
+ perform public.erp_command(b,'order.cancel',jsonb_build_object('id',sale,'reason','Cancelamento teste'),gen_random_uuid());
+ if (select stock from public.products where id=prod)<>10 then raise exception 'FAIL devolução estoque'; end if;
+ denied:=false; begin perform public.erp_command(b,'stock.adjust',jsonb_build_object('product_id',prod,'warehouse_id',wid,'quantity',-11,'reason','Sem saldo'),gen_random_uuid()); exception when others then denied:=true; end;
+ if not denied or (select stock from public.products where id=prod)<>10 then raise exception 'FAIL saldo negativo/rollback'; end if;
+ insert into erp_control.memberships(company_id,user_id,role) values(b,other_u,'read');
+ perform set_config('request.jwt.claims',jsonb_build_object('sub',other_u,'session_id',other_session,'exp',floor(extract(epoch from now()+interval '1 hour')),'iat',floor(extract(epoch from now())),'aal','aal1')::text,true);
+ perform set_config('request.jwt.claim.sub',other_u::text,true);
+ perform public.erp_read(b,'products','{}');
+ denied:=false; begin perform public.erp_command(b,'stock.adjust',jsonb_build_object('product_id',prod,'warehouse_id',wid,'quantity',1,'reason','Sem permissão'),gen_random_uuid()); exception when insufficient_privilege then denied:=true; end;
+ if not denied then raise exception 'FAIL permissão leitura'; end if;
+ perform set_config('request.jwt.claim.sub',u::text,true);
+ perform set_config('request.jwt.claims',jsonb_build_object('sub',u,'session_id',op_session,'exp',floor(extract(epoch from now()+interval '1 hour')),'iat',floor(extract(epoch from now())),'aal','aal1')::text,true);
+ prod:=(public.erp_command(b,'product.save','{"name":"PLA","sku":"PLA","unit":"g","item_type":"material","cost":0.1,"price":0.2,"currency":"BRL","stock":1000}',gen_random_uuid())->>'id')::uuid;
+ if not exists(select 1 from public.erp_stock_ledger where product_id=prod and kind='opening' and delta=1000) then raise exception 'FAIL abertura registrada'; end if;
+ sid:=(public.erp_command(b,'spool.save',jsonb_build_object('name','Bobina preta','product_id',prod,'warehouse_id',wid,'remaining_g',1000),gen_random_uuid())->>'id')::uuid;
+ printer:=(public.erp_command(b,'printer.save','{"name":"A1 bancada","model":"A1","nozzle":0.4,"watts":100,"hourly_cost":2,"maintenance_hours":500}',gen_random_uuid())->>'id')::uuid;
+ output_id:=(public.erp_command(b,'product.save','{"name":"Vaso","unit":"un","item_type":"finished","cost":5,"price":20,"currency":"BRL","stock":0}',gen_random_uuid())->>'id')::uuid;
+ job:=(public.erp_command(b,'job.save',jsonb_build_object('name','Lote de vasos','product_id',output_id,'printer_id',printer,'spool_id',sid,'quantity',2,'estimated_g',200,'estimated_hours',3,'kwh_price',1,'due_date',current_date),gen_random_uuid())->>'id')::uuid;
+ if (select reserved_g from public.erp_spools where id=sid)<>200 then raise exception 'FAIL reserva'; end if;
+ perform public.erp_command(b,'job.start',jsonb_build_object('id',job),gen_random_uuid());
+ perform public.erp_command(b,'job.finish',jsonb_build_object('id',job,'actual_g',220,'actual_hours',4,'good_quantity',2,'warehouse_id',wid),gen_random_uuid());
+ if (select stock from public.products where id=prod)<>780 or (select stock from public.products where id=output_id)<>2 then raise exception 'FAIL consumo real produção'; end if;
+ if (select reserved_g from public.erp_spools where id=sid)<>0 then raise exception 'FAIL liberar reserva'; end if;
+ foreach detail in array array[public.erp_read(b,'overview','{}'),public.erp_read(b,'orders','{}'),public.erp_read(b,'titles','{}'),public.erp_read(b,'stock','{}'),public.erp_read(b,'members','{}'),public.erp_read(b,'movements','{}'),public.erp_read(b,'jobs','{}')] loop
+  if detail is null then raise exception 'FAIL leitura'; end if;
+ end loop;
+ if has_column_privilege('authenticated','public.products','stock','UPDATE') or has_table_privilege('authenticated','public.erp_payments','INSERT') then raise exception 'FAIL escrita direta'; end if;
+ raise notice 'PASS: compra 10, idempotência, venda 3/saldo 7, parcial, estornos, rollback, permissão, abertura e produção 3D';
+end $$;
+

@@ -1,0 +1,16 @@
+"use client";
+import {useState} from 'react';
+import type {SupabaseClient} from '@supabase/supabase-js';
+import {Fields,values} from './operation-fields';
+import {errorMessage,str} from '@/lib/operations';
+export default function AccountDialog({db,google,recovery,onDone,allowSignup=true}:{db:SupabaseClient|null;google:boolean;recovery:boolean;onDone:()=>void;allowSignup?:boolean}) {
+ const [mode,setMode]=useState(recovery?'new-password':'login'),[busy,setBusy]=useState(false),[message,setMessage]=useState(''),[error,setError]=useState('');
+ async function submit(form:HTMLFormElement) {if(!db)return;setBusy(true);setError('');setMessage('');const v=values(form);try {
+  if(mode==='recovery'){const {error}=await db.auth.resetPasswordForEmail(str(v.email),{redirectTo:window.location.origin+'/?recovery=1'});if(error)throw error;setMessage('Se a conta existir, você receberá um link para redefinir a senha.');}
+  else if(mode==='new-password'){const {error}=await db.auth.updateUser({password:str(v.password)});if(error)throw error;setMessage('Senha atualizada.');onDone();}
+  else if(mode==='signup'){const {data,error}=await db.auth.signUp({email:str(v.email),password:str(v.password),options:{emailRedirectTo:window.location.origin+'/'}});if(error)throw error;if(data.session)onDone();else setMessage('Confira seu e-mail para confirmar a conta.');}
+  else {const {error}=await db.auth.signInWithPassword({email:str(v.email),password:str(v.password)});if(error)throw error;onDone();}
+ }catch(e){setError(errorMessage(e))}finally{setBusy(false)}}
+ return <><p className="op-muted">{mode==='recovery'?'Receba um link seguro para recuperar o acesso.':mode==='new-password'?'Escolha uma nova senha para sua conta.':'Sua empresa, seus dados, em qualquer dispositivo.'}</p><form onSubmit={e=>{e.preventDefault();void submit(e.currentTarget)}}><Fields fields={[...(mode!=='new-password'?[{key:'email',label:'E-mail',type:'email',required:true}]:[]),...(mode!=='recovery'?[{key:'password',label:'Senha',type:'password',required:true,minLength:mode==='login'?undefined:8,hint:'Use pelo menos 8 caracteres.'}]:[])]}/>{error&&<p className="op-error" role="alert">{error}</p>}{message&&<p className="op-success" role="status">{message}</p>}<button className="primary wide" disabled={busy||!db}>{busy?'Aguarde…':mode==='recovery'?'Enviar link':mode==='new-password'?'Salvar nova senha':mode==='signup'?'Criar conta':'Entrar'}</button></form>{mode!=='new-password'&&<div className="op-auth-links"><button hidden={!allowSignup} onClick={()=>{setMode(mode==='signup'?'login':'signup');setError('')}}>{mode==='signup'?'Já tenho uma conta':'Criar uma conta'}</button><button onClick={()=>{setMode(mode==='recovery'?'login':'recovery');setError('')}}>{mode==='recovery'?'Voltar para entrar':'Esqueci minha senha'}</button></div>}{mode==='login'&&(allowSignup||google)&&<button className="google-button" disabled={!google||busy} title={!google?'Google aguardando configuração':undefined} onClick={async()=>{if(!db)return;const {error}=await db.auth.signInWithOAuth({provider:'google',options:{redirectTo:window.location.origin+'/'}});if(error)setError(error.message)}}>Continuar com Google{!google?' · Em configuração':''}</button>}</>
+}
+

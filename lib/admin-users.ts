@@ -1,0 +1,6 @@
+import {z} from 'zod';
+export const adminUserFilters=z.object({query:z.string().trim().max(160).default(''),company:z.union([z.string().uuid(),z.literal('')]).default(''),status:z.enum(['','active','blocked','suspended']).default(''),confirmation:z.enum(['','confirmed','pending']).default(''),page:z.number().int().min(0).max(100000).default(0),size:z.literal(20).optional()}).strict();
+export const adminUserProfile=z.object({user:z.string().uuid(),display_name:z.string().trim().min(1).max(160).refine(v=>!/[\u0000-\u001f\u007f]/.test(v)),version:z.number().int().nonnegative(),reason:z.string().trim().min(10).max(1000)}).strict();
+const accountCommand={user:z.string().uuid(),version:z.number().int().nonnegative(),reason:z.string().trim().min(10).max(1000),company:z.string().uuid().nullable().optional()};
+export const adminUserStatus=z.object({...accountCommand,status:z.enum(['active','blocked','suspended'])}).strict();
+export const adminUserRevoke=z.object(accountCommand).strict();

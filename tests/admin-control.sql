@@ -1,0 +1,52 @@
+-- Run after db/admin-control.sql, inside BEGIN ... ROLLBACK only.
+do $$
+declare a uuid:=gen_random_uuid(); ordinary uuid:=gen_random_uuid(); sid uuid:=gen_random_uuid(); fid uuid:=gen_random_uuid(); b uuid:=gen_random_uuid(); token jsonb; r jsonb; denied boolean;
+begin
+ insert into auth.users(id,email) values(a,'admin-fixture@example.invalid'),(ordinary,'ordinary-fixture@example.invalid');
+ insert into erp_control.administrators(user_id) values(a);
+ insert into auth.sessions(id,user_id,created_at,updated_at,aal) values(sid,a,now(),now(),'aal1');
+ token:=jsonb_build_object('sub',a,'session_id',sid,'exp',floor(extract(epoch from now()+interval '1 hour')),'iat',floor(extract(epoch from now())),'aal','aal1');
+ perform set_config('request.jwt.claims',token::text,true);
+ r:=public.erp_admin_read('context');
+ if r->>'eligible'<>'true' then raise exception 'Authorized administrator not recognized';end if;
+ denied:=false;begin perform public.erp_admin_read('overview');exception when insufficient_privilege then denied:=true;end;
+ if not denied then raise exception 'AAL1 bypass';end if;
+ insert into auth.mfa_factors(id,user_id,factor_type,status,created_at,updated_at) values(fid,a,'totp','verified',now(),now());
+ update auth.sessions set aal='aal2',factor_id=fid where id=sid;
+ token:=token||jsonb_build_object('aal','aal2','amr',jsonb_build_array(jsonb_build_object('method','totp','timestamp',floor(extract(epoch from now())))));
+ perform set_config('request.jwt.claims',token::text,true);
+ perform public.erp_admin_read('overview');
+ insert into public.business_units(id,owner_id,name,model) values(b,a,'Administrative test','printing');
+ insert into erp_control.companies(id) values(b) on conflict do nothing;
+ insert into erp_control.memberships(company_id,user_id,role) values(b,ordinary,'stock');
+ r:=public.erp_admin_command('permission.save',jsonb_build_object('company',b,'scope','company','subject','*','module','stock','action','available','allowed',false,'reason','Disable module for test'),gen_random_uuid());
+ if r->>'ok'<>'true' then raise exception 'Save permission: %',r;end if;
+ r:=public.erp_admin_command('permission.save',jsonb_build_object('company',b,'scope','user','subject',ordinary,'module','stock','action','edit','allowed',true,'reason','User allow must not override deny'),gen_random_uuid());
+ if r->>'ok'<>'true' then raise exception 'Save user permission: %',r;end if;
+ r:=erp_control.effective(b,ordinary,'stock','edit');
+ if r->>'allowed'<>'false' then raise exception 'Explicit deny lost precedence';end if;
+ if erp_control.effective(b,ordinary,'unknown','edit')->>'allowed'<>'false' then raise exception 'Unknown function allowed';end if;
+ r:=public.erp_admin_command('provision.note',jsonb_build_object('company',b,'version',1,'status','ready','reason','Try to fake a ready database'),gen_random_uuid());
+ if r->>'ok'<>'false' then raise exception 'Database ready can be forged';end if;
+ token:=jsonb_set(token,'{amr}',jsonb_build_array(jsonb_build_object('method','totp','timestamp',floor(extract(epoch from now()-interval '10 minutes')))));
+ perform set_config('request.jwt.claims',token::text,true);
+ r:=public.erp_admin_command('user.status',jsonb_build_object('user',ordinary,'version',0,'status','blocked','reason','Require recent MFA proof'),gen_random_uuid());
+ if r->>'ok'<>'false' then raise exception 'Stale MFA accepted';end if;
+ delete from auth.sessions where id=sid;
+ denied:=false;begin perform public.erp_admin_read('overview');exception when invalid_authorization_specification then denied:=true;end;
+ if not denied then raise exception 'Revoked session accepted';end if;
+ if has_table_privilege('authenticated','erp_control.administrators','INSERT') or has_table_privilege('authenticated','erp_control.audit','UPDATE') or has_function_privilege('authenticated','erp_control.effective(uuid,uuid,text,text)','EXECUTE') or has_function_privilege('anon','public.erp_admin_read(text,jsonb)','EXECUTE') then raise exception 'Private grants leaked';end if;
+ if (select count(*) from erp_control.audit where actor_id=a and result='denied')<>2 then raise exception 'Denied attempts not audited';end if;
+ insert into auth.sessions(id,user_id,created_at,updated_at,aal) values(sid,ordinary,now(),now(),'aal2');
+ update auth.users set raw_user_meta_data='{"role":"global_admin","is_admin":true}' where id=ordinary;
+ token:=jsonb_set(token,'{sub}',to_jsonb(ordinary));
+ perform set_config('request.jwt.claims',token::text,true);
+ if public.erp_admin_read('context')->>'eligible'<>'false' then raise exception 'User metadata escalated privileges';end if;
+ denied:=false;begin perform public.erp_admin_read('users');exception when insufficient_privilege then denied:=true;end;
+ if not denied then raise exception 'Ordinary user can list identities';end if;
+ set local role authenticated;
+ denied:=false;begin perform public.erp_admin_read('overview');exception when insufficient_privilege then denied:=true;end;
+ if not denied then raise exception 'Authenticated role bypass';end if;
+ reset role;
+end $$;
+
