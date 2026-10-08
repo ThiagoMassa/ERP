@@ -111,11 +111,19 @@ export async function createTenantBackup(options:BackupOptions):Promise<BackupMa
   const inventory=await fingerprint(sql),created=new Date(),iv=randomBytes(12);
   const fields={version:1 as const,id,company:identity.company,database:identity.database,created_at:created.toISOString(),retention_until:new Date(created.getTime()+options.retentionDays*86400000).toISOString(),verified_at:null,key_id:options.key.id,iv:iv.toString('hex')};
   const cipher=createCipheriv('aes-256-gcm',options.key.value,iv);cipher.setAAD(authenticatedData(fields));
-  const hash=createHash('sha256');let bytes=0;
-  const meter=new Transform({transform(chunk,encoding,callback){bytes+=chunk.length;if(bytes>maxBytes)return callback(fail('BACKUP_SIZE','Backup excede o limite configurado.'));hash.update(chunk);callback(null,chunk);}});
+  const hash=createHash('sha256');let bytes=0;let sizeError:TenantConfigurationError|undefined;
+  const meter=new Transform({transform(chunk,encoding,callback){bytes+=chunk.length;if(bytes>maxBytes){sizeError=fail('BACKUP_SIZE','Backup excede o limite configurado.');return callback(sizeError);}hash.update(chunk);callback(null,chunk);}});
   const dump=nativeTool(options.tools.dump,'pg_dump',['--no-password','--format=custom','--schema=public','--schema=tenant','--schema=erp_private','--strict-names','--no-publications','--no-subscriptions','--no-security-labels','--no-tablespaces','--lock-wait-timeout=15000',`--snapshot=${snapshot}`],toolEnvironment(options.connection,identity.database));
   dump.child.stdin.end();
-  try{await Promise.all([dump.done,pipeline(dump.child.stdout,cipher,meter,createWriteStream(paths.archive,{flags:'wx',mode:0o600}))]);}
+  try{
+   const streaming=pipeline(dump.child.stdout,cipher,meter,createWriteStream(paths.archive,{flags:'wx',mode:0o600})).catch(error=>{if(dump.child.exitCode===null)dump.child.kill();throw error;});
+   // Closing stdout after the meter rejects can make pg_dump fail first. Wait
+   // for both handles before cleanup and preserve the known size-limit cause.
+   const [processResult,streamResult]=await Promise.allSettled([dump.done,streaming]);
+   if(sizeError)throw sizeError;
+   if(processResult.status==='rejected')throw processResult.reason;
+   if(streamResult.status==='rejected')throw streamResult.reason;
+  }
   finally{if(dump.child.exitCode===null)dump.child.kill();}
   const archive=await open(paths.archive,'r+');try{await archive.sync();}finally{await archive.close();}
   return saveManifest(paths.manifest,{...fields,...inventory,bytes,sha256:hash.digest('hex'),tag:cipher.getAuthTag().toString('hex')},options.key);

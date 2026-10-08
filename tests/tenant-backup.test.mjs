@@ -81,7 +81,8 @@ try{
  const forged=JSON.parse(manifestText);forged.retention_until='2100-01-01T00:00:00.000Z';await writeFile(manifestPath,JSON.stringify(forged));
  await assert.rejects(inspectBackup({company:companyIds[0],backup:backup.id,directory:root,key}),e=>e.code==='BACKUP_AUTHENTICATION');
  await writeFile(manifestPath,manifestText);
- const before=await readdir(root);await assert.rejects(createTenantBackup({...options,maxBytes:1}),e=>e.code==='BACKUP_SIZE');assert.deepEqual(await readdir(root),before);
+ const before=await readdir(root);
+ for(let attempt=0;attempt<5;attempt++){await assert.rejects(createTenantBackup({...options,maxBytes:1}),e=>e.code==='BACKUP_SIZE');assert.deepEqual(await readdir(root),before);}
  await assert.rejects(createTenantBackup({...options,directory:resolve('public/backups')}),e=>e.code==='BACKUP_PATH');
  const adminActor=randomUUID(),job={id:randomUUID(),epoch:randomUUID(),actor:adminActor,reason:'Recuperação autorizada em teste isolado',safety,confirmCompany:companyIds[0],confirmBackup:backup.id};
  const restoreOptions={company:companyIds[0],backup:backup.id,directory:root,key,maintenance:admin,connectMaintenanceDatabase:database=>postgres({...base,database}),connection,tools,target:a,psql:pgTestTool('psql'),job,authorize:async()=>{}};
