@@ -19,7 +19,7 @@ try{
  create table auth.mfa_factors(id uuid primary key,user_id uuid,status text);
  create function auth.jwt() returns jsonb language sql stable as $$select current_setting('request.jwt.claims',true)::jsonb$$;
  create function auth.uid() returns uuid language sql stable as $$select (auth.jwt()->>'sub')::uuid$$;`);
- for(const file of ['admin-control','tenant-routing','tenant-backup-control','admin-records','admin-corrections','admin-product-status','admin-cancellations','admin-company-directory','admin-overview'])await db.unsafe(await readFile(new URL('../db/'+file+'.sql',import.meta.url),'utf8'));
+ for(const file of ['admin-control','tenant-routing','tenant-backup-control','admin-records','admin-corrections','admin-product-status','admin-cancellations','admin-payment-reversal','admin-company-directory','admin-overview'])await db.unsafe(await readFile(new URL('../db/'+file+'.sql',import.meta.url),'utf8'));
  // The disposable tenant starts stricter than Supabase's central exposed schema.
  await db`grant usage on schema public to authenticated`;
  const adm=randomUUID(),user=randomUUID(),session=randomUUID(),company=randomUUID(),now=Math.floor(Date.now()/1000);
@@ -60,6 +60,7 @@ try{
  const edit=await correction();assert.equal(edit.administrative,true);assert.equal(edit.admin_action,'admin.product.correct');assert.equal(edit.permissions.catalog.edit.allowed,true);assert.equal(edit.permissions.finance,undefined);
  const cancelOrderContext=await correction('admin.order.cancel');assert.equal(cancelOrderContext.permissions.sales.cancel.allowed,true);assert.equal(cancelOrderContext.permissions.purchases.cancel.allowed,true);assert.equal(cancelOrderContext.permissions.catalog,undefined);assert.equal(cancelOrderContext.permissions.sales.edit,undefined);
  const cancelTitleContext=await correction('admin.title.cancel');assert.equal(cancelTitleContext.permissions.finance.cancel.allowed,true);assert.equal(cancelTitleContext.permissions.sales,undefined);
+ const paymentContext=await correction('admin.payment.reverse');assert.deepEqual(Object.keys(paymentContext.permissions),['finance']);assert.equal(paymentContext.permissions.finance.reverse.allowed,true);assert.equal(paymentContext.permissions.finance.cancel,undefined);
  for(const operation of ['admin.product.archive','admin.product.restore']){const c=await correction(operation);assert.equal(c.admin_action,operation);assert.equal(c.permissions.catalog[operation.endsWith('archive')?'delete':'edit'].allowed,true);assert.equal(Object.keys(c.permissions.catalog).length,2);}
  const authorized=(await db`select * from erp_control.audit where correlation_id=${correctionKey}`)[0];assert.equal(authorized.action,'records.authorize.correct');assert.equal(authorized.reason,reason);assert.equal(authorized.entity,entity);
  await setToken({...token,amr:[{method:'totp',timestamp:now-600}]});await assert.rejects(correction(),e=>e.code==='42501');await setToken(token);

@@ -16,6 +16,7 @@ on:
       - 'db/admin-corrections.sql'
       - 'db/admin-product-status.sql'
       - 'db/admin-cancellations.sql'
+      - 'db/admin-payment-reversal.sql'
       - 'db/admin-company-directory.sql'
       - 'db/admin-overview.sql'
       - 'tests/admin-records.test.mjs'
