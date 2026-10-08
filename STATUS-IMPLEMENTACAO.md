@@ -4,6 +4,8 @@ Esta revisão está em desenvolvimento. Não confundir a compilação local com 
 
 ## Aplicado no Supabase central
 
+- Migração 20261008192936_admin_payment_reversal_context: autoriza estorno de pagamento com ADM/MFA recente, justificativa e somente financeiro/estornar. Privilégios e recusa sem sessão conferidos; advisor sem novos avisos. Nenhum pagamento de produção estornado.
+
 - Migração 20261008192234_admin_document_cancellation_context: autorização central para cancelar pedidos e títulos avulsos com ADM/MFA recente, justificativa e escopo restrito. Recusa sem sessão e privilégios conferidos após instalação; advisor sem novos avisos. Nenhum cancelamento real de produção executado.
 
 - Migração `20261004104831_admin_overview_metrics_alerts`: totais exclusivos de contas ativas, pendentes, bloqueadas e suspensas, incluindo banimentos vigentes do Auth; resumos de falhas de provisionamento/manutenção e eventos negados/falhos em 24 horas. Privilégios e rejeição sem sessão conferidos; advisor sem novos avisos. Não altera cadastros nem substitui a coleta completa de eventos de autenticação.
@@ -26,6 +28,8 @@ Esta revisão está em desenvolvimento. Não confundir a compilação local com 
 - O segundo fator da conta inicial ainda precisa ser cadastrado pelo titular pelo fluxo `/admin`.
 
 ## Código local e testes
+
+- Estorno administrativo integral de pagamentos integrado ao detalhamento, com revisão, justificativa, versão, repetição e auditoria antes/depois do pagamento/título. Migração empresarial 013; preserva autor original e saldo dos demais pagamentos. [Linux 37832570466](https://github.com/ThiagoMassa/ERP/actions/runs/37832570466) passou build, manifesto da rota com migrações, API/executor/DOM e PostgreSQL real com concorrência, rollback e recuperação. Build local encontrou erro de acesso do compilador no Windows; CI Linux verifica a versão completa. Corrigida também uma corrida no erro de limite de backup, aguardando encerramento dos fluxos antes da limpeza. Publicação, banco empresarial e sessão real ainda pendentes.
 
 - Cancelamento administrativo integrado à consulta de pedidos/títulos: revisão, motivo, versão, reautenticação, repetição com mesma chave e auditoria transacional antes/depois. A migração empresarial 012 delega às regras operacionais e registra também os títulos afetados pelo pedido. [Linux 37831237967](https://github.com/ThiagoMassa/ERP/actions/runs/37831237967) passou dependências, concorrência, rollback, isolamento e backup/restauração. Build, TypeScript, lint, API/executor/DOM aprovados. Banco empresarial, frontend e sessão real pendentes. Estornos administrativos e correções de outros cadastros ainda em desenvolvimento.
 

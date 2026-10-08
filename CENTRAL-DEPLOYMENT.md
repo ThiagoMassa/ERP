@@ -2,6 +2,8 @@
 
 ## Atualização em 08/10/2026
 
+Migração **20261008192936_admin_payment_reversal_context**, aplicada e conferida no histórico remoto. Fonte `db/admin-payment-reversal.sql`; SHA-256 `f4bf1a60c3a0edb8586b95de3f30a23c3fd317ce8385b908b094f4ae5c5a7ad5`. Acrescenta o estorno administrativo de pagamentos com ADM/MFA recente, justificativa e somente financeiro/estornar. A função pública permanece SECURITY INVOKER; anon não pode executar a função pública nem a privada. A chamada sem sessão foi recusada em transação revertida. Advisor sem novos avisos. Nenhum pagamento de produção foi estornado. A migração empresarial 013, frontend e sessão real ainda dependem da implantação. Preservar a fonte instalada.
+
 Migração **20261008192234_admin_document_cancellation_context**, aplicada e conferida no histórico remoto. Fonte `db/admin-cancellations.sql`; SHA-256 `dee4e53f7c63cc4f67be2205dac648630f81bc62a40a109839305fe9524d01d7`. Amplia a autorização existente para cancelamento administrativo de pedidos e títulos avulsos, com ADM/MFA recente, justificativa e somente as permissões necessárias. Preservar esta fonte instalada; futuras mudanças exigem nova migração.
 
 Depois da aplicação, as duas operações foram recusadas sem sessão em transação revertida. RPC pública permanece SECURITY INVOKER, EXECUTE negado a anon, permitido a authenticated com autorização interna; função privada também nega anon. Advisor não apresentou novos avisos: continuam nove informativos de RLS sem política nas tabelas privadas e o aviso de proteção contra senhas vazadas desativada. Nenhum documento de produção foi cancelado. A migração empresarial 012, bancos exclusivos e frontend ainda aguardam implantação; testes positivos usaram o cluster Linux descartável, sem simular MFA na conta real.

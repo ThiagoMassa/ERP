@@ -8,6 +8,10 @@ O painel **Bancos e backups** exige empresa selecionada e sessão ADM com MFA. M
 
 Uma solicitação não é um backup concluído. O painel registra uma fila autorizada; a execução ocorre em processo privado com ferramentas PostgreSQL. Não há execução nativa nem credenciais de manutenção nas rotas web. A autorização do solicitante é revalidada durante a execução e expira após dez minutos; o solicitante pode renová-la no painel com MFA recente.
 
+## Verificação de limite — 08/10/2026
+
+A interrupção por tamanho podia encerrar o pg_dump antes de propagar o erro do medidor, substituindo BACKUP_SIZE por BACKUP_TOOL. O operador agora preserva a causa conhecida e aguarda processo e fluxo antes de remover os arquivos criados pela execução. A [execução Linux 37832570466](https://github.com/ThiagoMassa/ERP/actions/runs/37832570466) passou cinco recusas consecutivas com limpeza conferida, além da recuperação real. Isso não instala pg_dump no computador nem ativa o operador de produção.
+
 ## Garantias do mecanismo
 
 - `createTenantBackup`: valida banco, proprietário, identidade e migrações. Usa um snapshot PostgreSQL comum ao inventário e ao `pg_dump` custom. Criptografa o stream com AES-256-GCM, sem gravar SQL em claro. O manifesto é autenticado por HMAC e contém contagens, hashes, versão da chave e retenção.
